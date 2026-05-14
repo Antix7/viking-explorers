@@ -14,14 +14,14 @@ def project_spherical(latitude, longitude):
 pg.init()
 
 display_info = pg.display.Info()
-window_width = int(display_info.current_w * 0.9)
-window_height = int(display_info.current_h * 0.8)
+window_width = int(display_info.current_w * 0.8)
+window_height = int(display_info.current_h * 0.7)
 
 screen = pg.display.set_mode((window_width, window_height))
 pg.display.set_caption("Viking Explorers")
 map_image = pg.image.load("data/game_map.jpg").convert()
 
-zoom_level = 0.05
+zoom_level = 0.1
 zoom_factor = 1.2
 camera_x = 0
 camera_y = 0
@@ -57,9 +57,12 @@ while run:
     else:
         lmb_held_down = False
 
+    # Drawing the map on the screen
     screen.fill((0, 0, 0))
     scaled_map = pg.transform.smoothscale_by(map_image, zoom_level)
-    screen.blit(scaled_map, (camera_x, camera_y))
+    crop_rect = pg.Rect(-camera_x, -camera_y, window_width, window_height)
+    cropped_map = scaled_map.subsurface(crop_rect)
+    screen.blit(cropped_map, (0, 0))
 
     pg.display.flip()
 
