@@ -11,11 +11,32 @@ def project_spherical(latitude, longitude):
     y = MAP_SCALE * (latitude-MAP_LAT_START)
     return x, y
 
+def get_crop_parameters(camera_x, camera_y, scaled_map_width, scaled_map_height):
+    top_left_x = max(-camera_x, 0)
+    top_left_y = max(-camera_y, 0)
+    bottom_right_x = min(window_width-camera_x, scaled_map_width)
+    bottom_right_y = min(window_height-camera_y, scaled_map_height)
+    crop_rect = pg.Rect(
+        top_left_x, top_left_y,
+        bottom_right_x - top_left_x,
+        bottom_right_y - top_left_y)
+    draw_position_x = 0 if camera_x <= 0 else camera_x
+    draw_position_y = 0 if camera_y <= 0 else camera_y
+    print(camera_x, camera_y, scaled_map_width, scaled_map_height)
+    print(crop_rect)
+    return {
+        "crop_rect": crop_rect,
+        "draw_position_x": draw_position_x,
+        "draw_position_y": draw_position_y,
+    }
+
+
 pg.init()
 
 display_info = pg.display.Info()
 window_width = int(display_info.current_w * 0.8)
 window_height = int(display_info.current_h * 0.7)
+print(window_width, window_height)
 
 screen = pg.display.set_mode((window_width, window_height))
 pg.display.set_caption("Viking Explorers")
@@ -60,10 +81,11 @@ while run:
     # Drawing the map on the screen
     screen.fill((0, 0, 0))
     scaled_map = pg.transform.smoothscale_by(map_image, zoom_level)
-    crop_rect = pg.Rect(-camera_x, -camera_y, window_width, window_height)
-    cropped_map = scaled_map.subsurface(crop_rect)
-    screen.blit(cropped_map, (0, 0))
-
+    crop_parameters = get_crop_parameters(
+        camera_x, camera_y,
+        scaled_map.get_rect().width, scaled_map.get_rect().height)
+    cropped_map = scaled_map.subsurface(crop_parameters["crop_rect"])
+    screen.blit(cropped_map, (crop_parameters["draw_position_x"], crop_parameters["draw_position_y"]))
     pg.display.flip()
 
 pg.quit()
