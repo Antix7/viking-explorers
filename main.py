@@ -39,13 +39,14 @@ screen = pg.display.set_mode((window_width, window_height))
 pg.display.set_caption("Viking Explorers")
 map_image = pg.image.load("data/game_map.jpg").convert_alpha()
 
-zoom_level = 0.05
+zoom_level = 0.1
 zoom_factor = 1.2
 camera_x = 0
 camera_y = 0
 lmb_held_down = False
 ship_latitude = (pi/3)
 ship_longitude = 0
+ship_velocity = 0.001 #[rad/whatever]
 
 run = True
 while run:
@@ -77,6 +78,17 @@ while run:
             pg.mouse.get_rel()
     else:
         lmb_held_down = False
+
+    # Crude ship movement
+    pressed_keys = pg.key.get_pressed()
+    if pressed_keys[K_w]:
+        ship_latitude += ship_velocity
+    if pressed_keys[K_s]:
+        ship_latitude -= ship_velocity
+    if pressed_keys[K_d]:
+        ship_longitude += ship_velocity
+    if pressed_keys[K_a]:
+        ship_longitude -= ship_velocity
 
     # Checking if the map fills the entire screen
     map_width = map_image.get_rect().width * zoom_level
