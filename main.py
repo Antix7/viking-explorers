@@ -43,11 +43,13 @@ screen = pg.display.set_mode((window_width, window_height))
 pg.display.set_caption("Viking Explorers")
 map_image = pg.image.load("data/game_map.jpg").convert_alpha()
 
-zoom_level = 0.1
+zoom_level = 0.05
 zoom_factor = 1.2
 camera_x = 0
 camera_y = 0
 lmb_held_down = False
+ship_latitude = (pi/3)
+ship_longitude = 0
 
 run = True
 while run:
@@ -94,6 +96,14 @@ while run:
         scaled_map.get_rect().width, scaled_map.get_rect().height)
     cropped_map = scaled_map.subsurface(crop_parameters["crop_rect"])
     screen.blit(cropped_map, (crop_parameters["draw_position_x"], crop_parameters["draw_position_y"]))
+
+    # Drawing the ship's position
+    ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
+    ship_position_y = map_image.get_rect().height - ship_position_y
+    ship_position_x_scaled = ship_position_x * zoom_level + camera_x
+    ship_position_y_scaled = ship_position_y * zoom_level + camera_y
+    pg.draw.circle(screen, "red", (ship_position_x_scaled, ship_position_y_scaled), 3)
+
     pg.display.flip()
 
 pg.quit()
