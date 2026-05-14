@@ -20,13 +20,9 @@ def get_crop_parameters(camera_x, camera_y, scaled_map_width, scaled_map_height)
         top_left_x, top_left_y,
         bottom_right_x - top_left_x,
         bottom_right_y - top_left_y)
-    draw_position_x = 0 if camera_x <= 0 else camera_x
-    draw_position_y = 0 if camera_y <= 0 else camera_y
-    return {
-        "crop_rect": crop_rect,
-        "draw_position_x": draw_position_x,
-        "draw_position_y": draw_position_y,
-    }
+    draw_position_x = 0.0 if camera_x <= 0 else camera_x
+    draw_position_y = 0.0 if camera_y <= 0 else camera_y
+    return crop_rect, draw_position_x, draw_position_y
 
 def is_zoom_out_allowed(zoom_level):
     map_width = map_image.get_rect().width * zoom_level / zoom_factor
@@ -94,8 +90,8 @@ while run:
     crop_parameters = get_crop_parameters(
         camera_x, camera_y,
         scaled_map.get_rect().width, scaled_map.get_rect().height)
-    cropped_map = scaled_map.subsurface(crop_parameters["crop_rect"])
-    screen.blit(cropped_map, (crop_parameters["draw_position_x"], crop_parameters["draw_position_y"]))
+    cropped_map = scaled_map.subsurface(crop_parameters[0])
+    screen.blit(cropped_map, (crop_parameters[1], crop_parameters[2]))
 
     # Drawing the ship's position
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
