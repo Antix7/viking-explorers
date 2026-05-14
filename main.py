@@ -22,25 +22,26 @@ def get_crop_parameters(camera_x, camera_y, scaled_map_width, scaled_map_height)
         bottom_right_y - top_left_y)
     draw_position_x = 0 if camera_x <= 0 else camera_x
     draw_position_y = 0 if camera_y <= 0 else camera_y
-    print(camera_x, camera_y, scaled_map_width, scaled_map_height)
-    print(crop_rect)
     return {
         "crop_rect": crop_rect,
         "draw_position_x": draw_position_x,
         "draw_position_y": draw_position_y,
     }
 
+def is_zoom_out_allowed(zoom_level):
+    map_width = map_image.get_rect().width * zoom_level / zoom_factor
+    map_height = map_image.get_rect().height * zoom_level / zoom_factor
+    return map_width >= window_width and map_height >= window_height
 
 pg.init()
 
 display_info = pg.display.Info()
 window_width = int(display_info.current_w * 0.8)
 window_height = int(display_info.current_h * 0.7)
-print(window_width, window_height)
 
 screen = pg.display.set_mode((window_width, window_height))
 pg.display.set_caption("Viking Explorers")
-map_image = pg.image.load("data/game_map.jpg").convert()
+map_image = pg.image.load("data/game_map.jpg").convert_alpha()
 
 zoom_level = 0.1
 zoom_factor = 1.2
@@ -60,7 +61,8 @@ while run:
             if event.y > 0:
                 zoom_exponent = 1
             elif event.y < 0:
-                zoom_exponent = -1
+                if is_zoom_out_allowed(zoom_level):
+                    zoom_exponent = -1
             zoom_level *= zoom_factor**zoom_exponent
             mouse_x, mouse_y = pg.mouse.get_pos()
             camera_x = mouse_x + (camera_x - mouse_x) * (zoom_factor**zoom_exponent)
@@ -77,6 +79,12 @@ while run:
             pg.mouse.get_rel()
     else:
         lmb_held_down = False
+
+    # Checking if the map fills the entire screen
+    map_width = map_image.get_rect().width * zoom_level
+    map_height = map_image.get_rect().height * zoom_level
+    camera_x = max(min(camera_x, 0), window_width - map_width)
+    camera_y = max(min(camera_y, 0), window_height - map_height)
 
     # Drawing the map on the screen
     screen.fill((0, 0, 0))
