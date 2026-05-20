@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pygame as pg
 from pygame.constants import *
+from ui_library import *
 
 MAP_SCALE = 2400*18/pi #[px/rad]
 MAP_LAT_START = (pi/2)*(4/9)
@@ -171,13 +172,15 @@ def is_zoom_out_allowed(zoom_level):
 
 # Setting up pygame
 pg.init()
-display_info = pg.display.Info()
-window_width = int(display_info.current_w * 0.8)
-window_height = int(display_info.current_h * 0.7)
 
-screen = pg.display.set_mode((window_width, window_height))
+screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
+window_width = screen.get_width()
+window_height = screen.get_height()
 pg.display.set_caption("Viking Explorers")
 map_image = pg.image.load("data/game_map.jpg").convert_alpha()
+
+font = pg.font.SysFont('Arial', 20, bold=True)
+button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font)
 
 zoom_level = 0.1
 zoom_factor = 1.2
@@ -191,9 +194,15 @@ ship_velocity = 0.001 #[rad/whatever]
 # Main game loop
 run = True
 while run:
+    mouse_pos = pg.mouse.get_pos()
     for event in pg.event.get():
         if event.type == QUIT:
             run = False
+
+        def quit_game():
+            global run
+            run = False
+        button.handle_event(event, mouse_pos, quit_game)
 
         # Zooming of the map
         if event.type == MOUSEWHEEL:
@@ -207,6 +216,8 @@ while run:
             mouse_x, mouse_y = pg.mouse.get_pos()
             camera_x = mouse_x + (camera_x - mouse_x) * (zoom_factor**zoom_exponent)
             camera_y = mouse_y + (camera_y - mouse_y) * (zoom_factor**zoom_exponent)
+
+    button.update(mouse_pos)
 
     # Panning of the map
     if pg.mouse.get_pressed()[0]:
@@ -253,6 +264,11 @@ while run:
     ship_position_y_scaled = ship_position_y * zoom_level + camera_y
     pg.draw.circle(screen, "red", (ship_position_x_scaled, ship_position_y_scaled), 3)
 
+    button.draw(screen)
+
     pg.display.flip()
 
 pg.quit()
+
+#F1C888 - ocean
+#905918 - land
