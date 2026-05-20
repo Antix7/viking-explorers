@@ -81,11 +81,13 @@ def get_sun_position(latitude, longitude, date):
 
     return sun_elevation_angle, sun_azimuth
 
+# Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
     x = MAP_SCALE * (longitude-MAP_LON_START)
     y = MAP_SCALE * (latitude-MAP_LAT_START)
     return x, y
 
+# Determines how the map image should be cropped and positioned on the screen
 def get_crop_parameters(camera_x, camera_y, scaled_map_width, scaled_map_height):
     top_left_x = max(-camera_x, 0)
     top_left_y = max(-camera_y, 0)
@@ -99,13 +101,14 @@ def get_crop_parameters(camera_x, camera_y, scaled_map_width, scaled_map_height)
     draw_position_y = 0.0 if camera_y <= 0 else camera_y
     return crop_rect, draw_position_x, draw_position_y
 
+# Checks if the map would cover the entire screen after a zoom-out
 def is_zoom_out_allowed(zoom_level):
     map_width = map_image.get_rect().width * zoom_level / zoom_factor
     map_height = map_image.get_rect().height * zoom_level / zoom_factor
     return map_width >= window_width and map_height >= window_height
 
+# Setting up pygame
 pg.init()
-
 display_info = pg.display.Info()
 window_width = int(display_info.current_w * 0.8)
 window_height = int(display_info.current_h * 0.7)
@@ -123,6 +126,7 @@ ship_latitude = (pi/3)
 ship_longitude = 0
 ship_velocity = 0.001 #[rad/whatever]
 
+# Main game loop
 run = True
 while run:
     for event in pg.event.get():
@@ -165,7 +169,7 @@ while run:
     if pressed_keys[K_a]:
         ship_longitude -= ship_velocity
 
-    # Checking if the map fills the entire screen
+    # Checking if the map fills the entire screen and pans it if it doesn't
     map_width = map_image.get_rect().width * zoom_level
     map_height = map_image.get_rect().height * zoom_level
     camera_x = max(min(camera_x, 0), window_width - map_width)
