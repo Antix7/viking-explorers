@@ -60,17 +60,24 @@ def get_sun_position(latitude, longitude, date):
     ])
     days_rotation_matrix = get_earth_rotation_matrix(earth_rotation_angular_position)
     earth_centered_inertial = np.dot(days_rotation_matrix, earth_centered_fixed)
+    local_south_direction = rotate_down(earth_centered_inertial)
 
     year_rotation_matrix = get_earth_rotation_matrix(earth_orbit_angular_position)
-    sun_centered_fixed = np.dot(year_rotation_matrix, np.dot(axial_tilt_matrix, earth_centered_inertial))
+    surface_normal = np.dot(year_rotation_matrix, np.dot(axial_tilt_matrix, earth_centered_inertial))
+    local_south_direction = np.dot(year_rotation_matrix, np.dot(axial_tilt_matrix, local_south_direction))
     sun_direction = np.array([1, 0, 0])
 
     # Using the surface normal direction and the sun direction to calculate the elevation angle and azimuth of the Sun
-    local_sun_direction = sun_direction - project_vector(sun_direction, sun_centered_fixed)
-    local_south_direction = rotate_down(sun_centered_fixed)
+    local_sun_direction = sun_direction - project_vector(sun_direction, surface_normal)
 
     sun_elevation_angle = angle_between_vectors(local_sun_direction, sun_direction)
+    if np.dot(surface_normal, sun_direction) < 0:
+        sun_elevation_angle *= -1
     sun_azimuth = angle_between_vectors(local_sun_direction, local_south_direction)
+    local_west = np.cross(local_south_direction, surface_normal)
+    if np.dot(local_west, local_sun_direction) < 0:
+        sun_azimuth = 2*pi - sun_azimuth
+    sun_azimuth = (sun_azimuth + pi)%(2*pi)
 
     return sun_elevation_angle, sun_azimuth
 
