@@ -78,28 +78,68 @@ def get_sun_position(latitude, longitude, date):
 
     return sun_elevation_angle, sun_azimuth
 
-date = datetime(1000, 6, 1, 1)
-time_step = timedelta(minutes=5)
-x_values = np.arange(0, 501)
-lat = 0*(pi/180)
-lon = 5*(pi/180)
-elevations = []
-azimuths = []
-for i in x_values:
-    elevation, azimuth = get_sun_position(lat, lon, date)
-    elevations.append(elevation * (180/pi))
-    azimuths.append(azimuth * (180/pi))
-    date += time_step
+# Returns the path of the Sun form sunrise to sunset for a range of latitudes
+def get_sun_path_data(latitudes, start_date, elevation_bound):
+    start_date -= timedelta(days=1)
+    time_step = timedelta(minutes=5)
+    result = {}
+    for latitude in latitudes:
+
+        azimuths = []
+        elevations = []
+        time_offset = timedelta(0)
+        previous_elevation = 4 # something larger than pi
+        run = True
+        record = False
+        success = True
+
+        while run:
+            if time_offset > timedelta(days=2):
+                success = False
+                break
+            elevation, azimuth = get_sun_position(latitude, 0, start_date+time_offset)
+            if previous_elevation < elevation_bound <= elevation:
+                record = True
+            if record:
+                azimuths.append(azimuth)
+                elevations.append(elevation)
+            if previous_elevation > elevation_bound >= elevation and record:
+                record = False
+                run = False
+            time_offset += time_step
+            previous_elevation = elevation
+
+        if success:
+            result[latitude] = (np.array(azimuths), np.array(elevations))
+        else:
+            result[latitude] = (np.array([]), np.array([]))
+
+    return result
+
+# Creates a visualization of the sundial using matplotlib
+def create_sundial_plot(latitude, longitude, start_lat, stop_lat, interval, date, min_elevation, sundial_height=1):
+    latitudes = np.arange(start_lat, stop_lat, interval)
+    sun_path_data = get_sun_path_data(latitudes, date, min_elevation)
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.set_yticklabels([])
+    ax.set_title("Sundial")
+
+    for key, [azimuths, elevations] in sun_path_data.items():
+
+        shadow_lengths = sundial_height/np.tan(elevations)
+        ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2)))
+
+    elevation, azimuth = get_sun_position(latitude, longitude, date)
+    shadow_length = sundial_height/tan(elevation)
+    ax.plot([azimuth+pi, azimuth+pi], [0, shadow_length], color="grey", linewidth=2, label="Shadow")
+    ax.set_rmin(0)
+    ax.legend()
+    fig.show()
+
+create_sundial_plot(np.radians(66), np.radians(5), np.radians(50), np.radians(70), np.radians(2), datetime(1001, 6, 1, hour=16), pi/6, 1)
 
 
-plt.subplot(2,  1, 1)
-plt.plot(x_values, np.array(elevations), label="Elevation")
-plt.plot(x_values, np.array(azimuths), label="Azimuth")
-plt.xlabel('Time [5-minute intervals]')
-plt.ylabel('Angle [deg]')
-plt.legend()
-plt.subplot(2,  1, 2)
-plt.plot(np.array(azimuths), np.array(elevations))
-plt.xlabel('Sun azimuth [deg]')
-plt.ylabel('Sun elevation [deg]')
-plt.show()
+# plt.savefig('foo.png', bbox_inches='tight')

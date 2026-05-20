@@ -1,6 +1,7 @@
 from math import *
 from datetime import datetime, timedelta
 import numpy as np
+import matplotlib.pyplot as plt
 import pygame as pg
 from pygame.constants import *
 
@@ -80,6 +81,67 @@ def get_sun_position(latitude, longitude, date):
     sun_azimuth = (sun_azimuth + pi)%(2*pi)
 
     return sun_elevation_angle, sun_azimuth
+
+# Returns the path of the Sun form sunrise to sunset for a range of latitudes
+def get_sun_path_data(latitudes, start_date, elevation_bound):
+    start_date -= timedelta(days=1)
+    time_step = timedelta(minutes=5)
+    result = {}
+    for latitude in latitudes:
+
+        azimuths = []
+        elevations = []
+        time_offset = timedelta(0)
+        previous_elevation = 4 # something larger than pi
+        run = True
+        record = False
+        success = True
+
+        while run:
+            if time_offset > timedelta(days=2):
+                success = False
+                break
+            elevation, azimuth = get_sun_position(latitude, 0, start_date+time_offset)
+            if previous_elevation < elevation_bound <= elevation:
+                record = True
+            if record:
+                azimuths.append(azimuth)
+                elevations.append(elevation)
+            if previous_elevation > elevation_bound >= elevation and record:
+                record = False
+                run = False
+            time_offset += time_step
+            previous_elevation = elevation
+
+        if success:
+            result[latitude] = (np.array(azimuths), np.array(elevations))
+        else:
+            result[latitude] = (np.array([]), np.array([]))
+
+    return result
+
+# Creates a visualization of the sundial using matplotlib
+def create_sundial_plot(latitude, longitude, start_lat, stop_lat, interval, date, min_elevation, sundial_height=1):
+    latitudes = np.arange(start_lat, stop_lat, interval)
+    sun_path_data = get_sun_path_data(latitudes, date, min_elevation)
+
+    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.set_yticklabels([])
+    ax.set_title("Sundial")
+
+    for key, [azimuths, elevations] in sun_path_data.items():
+
+        shadow_lengths = sundial_height/np.tan(elevations)
+        ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2)))
+
+    elevation, azimuth = get_sun_position(latitude, longitude, date)
+    shadow_length = sundial_height/tan(elevation)
+    ax.plot([azimuth+pi, azimuth+pi], [0, shadow_length], color="grey", linewidth=2, label="Shadow")
+    ax.set_rmin(0)
+    ax.legend()
+    fig.show()
 
 # Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
