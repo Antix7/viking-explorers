@@ -252,10 +252,11 @@ while run:
             elif event.y < 0:
                 if is_zoom_out_allowed(zoom_level):
                     zoom_exponent = -1
+            old_zoom = zoom_level
             zoom_level *= zoom_factor**zoom_exponent
             mouse_x, mouse_y = pg.mouse.get_pos()
-            camera_x = mouse_x + (camera_x - mouse_x) * (zoom_factor**zoom_exponent)
-            camera_y = mouse_y + (camera_y - mouse_y) * (zoom_factor**zoom_exponent)
+            camera_x += mouse_x  * (1/old_zoom - 1/zoom_level)
+            camera_y += mouse_y * (1/old_zoom - 1/zoom_level)
 
     # Handling button hover
     for button in buttons:
@@ -285,23 +286,22 @@ while run:
         ship_longitude -= ship_velocity
 
     # Checking if the map fills the entire screen and pans it if it doesn't
-
+    camera_x = min(max(camera_x, 0), MAP_WIDTH - screen_width / zoom_level)
+    camera_y = min(max(camera_y, 0), MAP_HEIGHT - screen_height / zoom_level)
 
     # Drawing the map on the screen
-    crop_rect_x = max(0, int(camera_x))
-    crop_rect_y = max(0, int(camera_y))
-    crop_rect_width = min(MAP_WIDTH - int(camera_x), int(screen_width / zoom_level))
-    crop_rect_height = min(MAP_HEIGHT - int(camera_y), int(screen_height / zoom_level))
+    crop_rect_x = camera_x
+    crop_rect_y = camera_y
+    crop_rect_width = screen_width / zoom_level
+    crop_rect_height = screen_height / zoom_level
     crop_rect = pg.Rect(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height)
-    print(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height, MAP_WIDTH, MAP_HEIGHT)
     visible_subsurface = map_surface.subsurface(crop_rect)
     scaled_surface = pg.transform.scale(visible_subsurface, (
-        int(crop_rect_width*zoom_level),
-        int(crop_rect_height*zoom_level)
+        crop_rect_width*zoom_level,
+        crop_rect_height*zoom_level
     ))
-
     screen.fill((0, 0, 0))
-    screen.blit(scaled_surface, (max(0, int(-camera_x*zoom_level)), max(0, int(-camera_y*zoom_level))))
+    screen.blit(scaled_surface, (0, 0))
 
     # Drawing the ship's position
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
