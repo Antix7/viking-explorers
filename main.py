@@ -202,7 +202,15 @@ def load_map():
     rgb_map[land_sea_mask == 1] = LAND_COLOR
     rgb_map = np.transpose(rgb_map, (1, 0, 2))
     map_surface = pg.surfarray.make_surface(rgb_map)
-    return map_surface, MAP_WIDTH, MAP_HEIGHT
+    return land_sea_mask, map_surface, MAP_WIDTH, MAP_HEIGHT
+
+def is_on_land(position_tuple):
+    x, y = position_tuple
+    x = int(round(x, 0))
+    y = MAP_HEIGHT - int(round(y, 0))
+    if 0 <= x < MAP_WIDTH and 0 <= y < MAP_HEIGHT:
+        return raw_map[y][x]
+    return 1
 
 # Setting up pygame
 pg.init()
@@ -212,7 +220,7 @@ SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
 pg.display.set_caption("Viking Explorers")
 
-map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
+raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
 font = pg.font.SysFont('Arial', 20, bold=True)
 buttons = []
@@ -226,7 +234,7 @@ zoom_factor = 1.2
 camera_x = 10300
 camera_y = 1600
 lmb_held_down = False
-ship_latitude = (pi/3)
+ship_latitude = (60*(pi/180))
 ship_longitude = 0
 ship_velocity = 0.0001 #[rad/whatever]
 
@@ -278,14 +286,19 @@ while run:
 
     # Crude ship movement
     pressed_keys = pg.key.get_pressed()
+    new_latitude = ship_latitude
+    new_longitude = ship_longitude
     if pressed_keys[K_w]:
-        ship_latitude += ship_velocity
+        new_latitude += ship_velocity
     if pressed_keys[K_s]:
-        ship_latitude -= ship_velocity
+        new_latitude -= ship_velocity
     if pressed_keys[K_d]:
-        ship_longitude += ship_velocity
+        new_longitude += ship_velocity
     if pressed_keys[K_a]:
-        ship_longitude -= ship_velocity
+        new_longitude -= ship_velocity
+    if not is_on_land(project_spherical(new_latitude, new_longitude)):
+        ship_latitude = new_latitude
+        ship_longitude = new_longitude
 
     # Checking if the map fills the entire screen and pans it if it doesn't
     camera_x = min(max(camera_x, 0), MAP_WIDTH - SCREEN_WIDTH / zoom_level)
