@@ -33,7 +33,7 @@ class Button:
         screen.blit(self.text_surf, self.text_rect)
 
 
-MAP_SCALE = 2400*18/pi #[px/rad]
+MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
 
@@ -179,10 +179,9 @@ def project_spherical(latitude, longitude):
 
 # Checks if the map would cover the entire screen after a zoom-out
 def is_zoom_out_allowed(zoom_level):
-    #return zoom_level / zoom_factor >= 1
     scaled_map_width = MAP_WIDTH * zoom_level / zoom_factor
     scaled_map_height = MAP_HEIGHT * zoom_level / zoom_factor
-    return scaled_map_width >= screen_width and scaled_map_height >= screen_height
+    return scaled_map_width >= SCREEN_WIDTH and scaled_map_height >= SCREEN_HEIGHT
 
 def quit_game():
     global run
@@ -209,8 +208,8 @@ def load_map():
 pg.init()
 
 screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
-screen_width = screen.get_width()
-screen_height = screen.get_height()
+SCREEN_WIDTH = screen.get_width()
+SCREEN_HEIGHT = screen.get_height()
 pg.display.set_caption("Viking Explorers")
 
 map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
@@ -220,14 +219,16 @@ buttons = []
 quit_button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font, quit_game)
 buttons.append(quit_button)
 
-zoom_level = 0.5
+MAX_ZOOM = 6.0
+MIN_ZOOM = 0.5
+zoom_level = 1
 zoom_factor = 1.2
-camera_x = 0
-camera_y = 0
+camera_x = 10300
+camera_y = 1600
 lmb_held_down = False
 ship_latitude = (pi/3)
 ship_longitude = 0
-ship_velocity = 0.001 #[rad/whatever]
+ship_velocity = 0.0001 #[rad/whatever]
 
 # Main game loop
 run = True
@@ -250,8 +251,9 @@ while run:
             if event.y > 0:
                 zoom_exponent = 1
             elif event.y < 0:
-                if is_zoom_out_allowed(zoom_level):
-                    zoom_exponent = -1
+                zoom_exponent = -1
+            if MAX_ZOOM < zoom_level*(zoom_factor**zoom_exponent) or zoom_level*(zoom_factor**zoom_exponent) < MIN_ZOOM:
+                zoom_exponent = 0
             old_zoom = zoom_level
             zoom_level *= zoom_factor**zoom_exponent
             mouse_x, mouse_y = pg.mouse.get_pos()
@@ -286,14 +288,14 @@ while run:
         ship_longitude -= ship_velocity
 
     # Checking if the map fills the entire screen and pans it if it doesn't
-    camera_x = min(max(camera_x, 0), MAP_WIDTH - screen_width / zoom_level)
-    camera_y = min(max(camera_y, 0), MAP_HEIGHT - screen_height / zoom_level)
+    camera_x = min(max(camera_x, 0), MAP_WIDTH - SCREEN_WIDTH / zoom_level)
+    camera_y = min(max(camera_y, 0), MAP_HEIGHT - SCREEN_HEIGHT / zoom_level)
 
     # Drawing the map on the screen
     crop_rect_x = camera_x
     crop_rect_y = camera_y
-    crop_rect_width = screen_width / zoom_level
-    crop_rect_height = screen_height / zoom_level
+    crop_rect_width = SCREEN_WIDTH / zoom_level
+    crop_rect_height = SCREEN_HEIGHT / zoom_level
     crop_rect = pg.Rect(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height)
     visible_subsurface = map_surface.subsurface(crop_rect)
     scaled_surface = pg.transform.scale(visible_subsurface, (
@@ -306,9 +308,9 @@ while run:
     # Drawing the ship's position
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
     ship_position_y = MAP_HEIGHT - ship_position_y
-    ship_position_x_scaled = ship_position_x * zoom_level + camera_x
-    ship_position_y_scaled = ship_position_y * zoom_level + camera_y
-    pg.draw.circle(screen, "red", (ship_position_x_scaled, ship_position_y_scaled), 3)
+    ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
+    ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
+    pg.draw.circle(screen, "red", (ship_position_x_screen, ship_position_y_screen), 3)
 
     # Drawing buttons
     for button in buttons:
