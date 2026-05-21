@@ -34,9 +34,8 @@ class Button:
 
 
 MAP_SCALE = 2400*18/pi #[px/rad]
-MAP_LAT_START = (pi/2)*(4/9)
-MAP_LON_START = -(pi/2)*(7/9)
-
+MAP_LAT_START = -pi/2
+MAP_LON_START = -pi
 
 # Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
 def get_earth_rotation_matrix(earth_rotation_angle):
@@ -178,46 +177,50 @@ def project_spherical(latitude, longitude):
     y = MAP_SCALE * (latitude-MAP_LAT_START)
     return x, y
 
-# Determines how the map image should be cropped and positioned on the screen
-def get_crop_parameters(camera_x, camera_y, scaled_map_width, scaled_map_height):
-    top_left_x = max(-camera_x, 0)
-    top_left_y = max(-camera_y, 0)
-    bottom_right_x = min(window_width-camera_x, scaled_map_width)
-    bottom_right_y = min(window_height-camera_y, scaled_map_height)
-    crop_rect = pg.Rect(
-        top_left_x, top_left_y,
-        bottom_right_x - top_left_x,
-        bottom_right_y - top_left_y)
-    draw_position_x = 0.0 if camera_x <= 0 else camera_x
-    draw_position_y = 0.0 if camera_y <= 0 else camera_y
-    return crop_rect, draw_position_x, draw_position_y
-
 # Checks if the map would cover the entire screen after a zoom-out
 def is_zoom_out_allowed(zoom_level):
-    map_width = map_image.get_rect().width * zoom_level / zoom_factor
-    map_height = map_image.get_rect().height * zoom_level / zoom_factor
-    return map_width >= window_width and map_height >= window_height
+    #return zoom_level / zoom_factor >= 1
+    scaled_map_width = MAP_WIDTH * zoom_level / zoom_factor
+    scaled_map_height = MAP_HEIGHT * zoom_level / zoom_factor
+    return scaled_map_width >= screen_width and scaled_map_height >= screen_height
 
 def quit_game():
     global run
     run = False
 
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip('#')
+    return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
+
+SEA_COLOR = hex_to_rgb("#F1C888")
+LAND_COLOR = hex_to_rgb("#905918")
+
+def load_map():
+    land_sea_mask = np.load("data/land_sea_mask.npz")["mask"]
+    MAP_HEIGHT, MAP_WIDTH = land_sea_mask.shape
+    rgb_map = np.zeros((MAP_HEIGHT, MAP_WIDTH, 3), dtype=np.uint8)
+    rgb_map[land_sea_mask == 0] = SEA_COLOR
+    rgb_map[land_sea_mask == 1] = LAND_COLOR
+    rgb_map = np.transpose(rgb_map, (1, 0, 2))
+    map_surface = pg.surfarray.make_surface(rgb_map)
+    return map_surface, MAP_WIDTH, MAP_HEIGHT
 
 # Setting up pygame
 pg.init()
 
 screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
-window_width = screen.get_width()
-window_height = screen.get_height()
+screen_width = screen.get_width()
+screen_height = screen.get_height()
 pg.display.set_caption("Viking Explorers")
-map_image = pg.image.load("data/game_map.jpg").convert_alpha()
+
+map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
 font = pg.font.SysFont('Arial', 20, bold=True)
 buttons = []
 quit_button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font, quit_game)
 buttons.append(quit_button)
 
-zoom_level = 0.1
+zoom_level = 0.5
 zoom_factor = 1.2
 camera_x = 0
 camera_y = 0
@@ -262,8 +265,8 @@ while run:
     if pg.mouse.get_pressed()[0]:
         if lmb_held_down:
             mouse_dx, mouse_dy = pg.mouse.get_rel()
-            camera_x += mouse_dx
-            camera_y += mouse_dy
+            camera_x -= mouse_dx / zoom_level
+            camera_y -= mouse_dy / zoom_level
         else:
             lmb_held_down = True
             pg.mouse.get_rel()
@@ -282,23 +285,27 @@ while run:
         ship_longitude -= ship_velocity
 
     # Checking if the map fills the entire screen and pans it if it doesn't
-    map_width = map_image.get_rect().width * zoom_level
-    map_height = map_image.get_rect().height * zoom_level
-    camera_x = max(min(camera_x, 0), window_width - map_width)
-    camera_y = max(min(camera_y, 0), window_height - map_height)
+
 
     # Drawing the map on the screen
+    crop_rect_x = max(0, int(camera_x))
+    crop_rect_y = max(0, int(camera_y))
+    crop_rect_width = min(MAP_WIDTH - int(camera_x), int(screen_width / zoom_level))
+    crop_rect_height = min(MAP_HEIGHT - int(camera_y), int(screen_height / zoom_level))
+    crop_rect = pg.Rect(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height)
+    print(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height, MAP_WIDTH, MAP_HEIGHT)
+    visible_subsurface = map_surface.subsurface(crop_rect)
+    scaled_surface = pg.transform.scale(visible_subsurface, (
+        int(crop_rect_width*zoom_level),
+        int(crop_rect_height*zoom_level)
+    ))
+
     screen.fill((0, 0, 0))
-    scaled_map = pg.transform.smoothscale_by(map_image, zoom_level)
-    crop_parameters = get_crop_parameters(
-        camera_x, camera_y,
-        scaled_map.get_rect().width, scaled_map.get_rect().height)
-    cropped_map = scaled_map.subsurface(crop_parameters[0])
-    screen.blit(cropped_map, (crop_parameters[1], crop_parameters[2]))
+    screen.blit(scaled_surface, (max(0, int(-camera_x*zoom_level)), max(0, int(-camera_y*zoom_level))))
 
     # Drawing the ship's position
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
-    ship_position_y = map_image.get_rect().height - ship_position_y
+    ship_position_y = MAP_HEIGHT - ship_position_y
     ship_position_x_scaled = ship_position_x * zoom_level + camera_x
     ship_position_y_scaled = ship_position_y * zoom_level + camera_y
     pg.draw.circle(screen, "red", (ship_position_x_scaled, ship_position_y_scaled), 3)
@@ -310,6 +317,3 @@ while run:
     pg.display.flip()
 
 pg.quit()
-
-#F1C888 - ocean
-#905918 - land
