@@ -1,7 +1,6 @@
 import rasterio
 from rasterio.enums import Resampling
 import numpy as np
-import matplotlib.pyplot as plt
 
 def read_topographic_data(scale_factor):
     with rasterio.open("data/elevation_map.tif") as dataset:
@@ -19,6 +18,6 @@ if get_saved_mask:
     land_sea_mask = np.load("data/land_sea_mask_testing.npz")["mask"]
 else:
     topographic_data = read_topographic_data(1)
-    land_sea_mask = (topographic_data > 0).astype(np.uint8)
+    land_sea_mask = (topographic_data > 0).astype(np.bool_)
     np.savez_compressed("data/land_sea_mask_testing.npz", mask=land_sea_mask)
     print(f"Mask created. New array shape: {land_sea_mask.shape}")
