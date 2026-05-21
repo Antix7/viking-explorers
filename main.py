@@ -7,11 +7,12 @@ from pygame.constants import *
 
 
 class Button:
-    def __init__(self, x, y, width, height, base_color, hover_color, text_color, text, font):
+    def __init__(self, x, y, width, height, base_color, hover_color, text_color, text, font, action):
         self.rect = pg.Rect(x, y, width, height)
         self.base_color = base_color
         self.hover_color = hover_color
         self.current_color = base_color
+        self.action = action
         self.text_surf = font.render(text, True, text_color)
         self.text_rect = self.text_surf.get_rect()
         self.text_rect.center = self.rect.center
@@ -22,10 +23,10 @@ class Button:
         else:
             self.current_color = self.base_color
 
-    def handle_event(self, event, mouse_pos, action):
+    def handle_event(self, event, mouse_pos):
         if event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse_pos):
-                action()
+                self.action()
 
     def draw(self, screen):
         pg.draw.rect(screen, self.current_color, self.rect)
@@ -197,6 +198,10 @@ def is_zoom_out_allowed(zoom_level):
     map_height = map_image.get_rect().height * zoom_level / zoom_factor
     return map_width >= window_width and map_height >= window_height
 
+def quit_game():
+    global run
+    run = False
+
 
 # Setting up pygame
 pg.init()
@@ -208,7 +213,9 @@ pg.display.set_caption("Viking Explorers")
 map_image = pg.image.load("data/game_map.jpg").convert_alpha()
 
 font = pg.font.SysFont('Arial', 20, bold=True)
-button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font)
+buttons = []
+quit_button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font, quit_game)
+buttons.append(quit_button)
 
 zoom_level = 0.1
 zoom_factor = 1.2
@@ -224,14 +231,15 @@ run = True
 while run:
 
     mouse_pos = pg.mouse.get_pos()
+    # Looping over all events and handling them
     for event in pg.event.get():
+
         if event.type == QUIT:
             run = False
 
-        def quit_game():
-            global run
-            run = False
-        button.handle_event(event, mouse_pos, quit_game)
+        # Handling button presses
+        for button in buttons:
+            button.handle_event(event, mouse_pos)
 
         # Zooming of the map
         if event.type == MOUSEWHEEL:
@@ -246,7 +254,9 @@ while run:
             camera_x = mouse_x + (camera_x - mouse_x) * (zoom_factor**zoom_exponent)
             camera_y = mouse_y + (camera_y - mouse_y) * (zoom_factor**zoom_exponent)
 
-    button.update(mouse_pos)
+    # Handling button hover
+    for button in buttons:
+        button.update(mouse_pos)
 
     # Panning of the map
     if pg.mouse.get_pressed()[0]:
@@ -293,7 +303,9 @@ while run:
     ship_position_y_scaled = ship_position_y * zoom_level + camera_y
     pg.draw.circle(screen, "red", (ship_position_x_scaled, ship_position_y_scaled), 3)
 
-    button.draw(screen)
+    # Drawing buttons
+    for button in buttons:
+        button.draw(screen)
 
     pg.display.flip()
 
