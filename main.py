@@ -33,6 +33,7 @@ class Button:
         screen.blit(self.text_surf, self.text_rect)
 
 
+EARTH_RADIUS = 6371 #[km]
 MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
@@ -193,6 +194,7 @@ def hex_to_rgb(hex_color):
 
 SEA_COLOR = hex_to_rgb("#F1C888")
 LAND_COLOR = hex_to_rgb("#905918")
+FOG_COLOR = hex_to_rgb("#333333")
 
 def load_map():
     land_sea_mask = np.load("data/land_sea_mask.npz")["mask"]
@@ -219,6 +221,7 @@ screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
 SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
 pg.display.set_caption("Viking Explorers")
+clock = pg.time.Clock()
 
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
@@ -227,6 +230,7 @@ buttons = []
 quit_button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font, quit_game)
 buttons.append(quit_button)
 
+FPS = 60
 MAX_ZOOM = 6.0
 MIN_ZOOM = 0.5
 zoom_level = 1
@@ -236,12 +240,14 @@ camera_y = 1600
 lmb_held_down = False
 ship_latitude = (60*(pi/180))
 ship_longitude = 0
-ship_velocity = 0.0001 #[rad/whatever]
+ship_velocity = 0.01 #[rad/second]
+horizon_distance = 50 #[km]
 
 # Main game loop
 run = True
 while run:
 
+    delta_time = clock.tick(FPS) / 1000
     mouse_pos = pg.mouse.get_pos()
     # Looping over all events and handling them
     for event in pg.event.get():
@@ -289,13 +295,13 @@ while run:
     new_latitude = ship_latitude
     new_longitude = ship_longitude
     if pressed_keys[K_w]:
-        new_latitude += ship_velocity
+        new_latitude += ship_velocity * delta_time
     if pressed_keys[K_s]:
-        new_latitude -= ship_velocity
+        new_latitude -= ship_velocity * delta_time
     if pressed_keys[K_d]:
-        new_longitude += ship_velocity
+        new_longitude += ship_velocity * delta_time
     if pressed_keys[K_a]:
-        new_longitude -= ship_velocity
+        new_longitude -= ship_velocity * delta_time
     if not is_on_land(project_spherical(new_latitude, new_longitude)):
         ship_latitude = new_latitude
         ship_longitude = new_longitude
@@ -324,6 +330,14 @@ while run:
     ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
     ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
     pg.draw.circle(screen, "red", (ship_position_x_screen, ship_position_y_screen), 3)
+
+    # Drawing dark overlay
+    visibility_radius = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level/cos(ship_latitude)
+    overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+    overlay.fill(FOG_COLOR)
+    pg.draw.circle(overlay, "white", (ship_position_x_screen, ship_position_y_screen), visibility_radius)
+    overlay.set_colorkey("white")
+    screen.blit(overlay, (0, 0))
 
     # Drawing buttons
     for button in buttons:
