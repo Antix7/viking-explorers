@@ -251,20 +251,23 @@ camera_y = 1600
 lmb_held_down = False
 ship_latitude = (60*(pi/180))
 ship_longitude = 0
-ship_velocity = 0.01 #[rad/second]
+ship_velocity = 0.01 #[rad/s]
+ship_angular_velocity = 2 #[rad/s]
+ship_heading = 0
 horizon_distance = 50 #[km]
 date = datetime(900, 5, 1, 20, 0, 0)
 sundial_shown = False
 sundial_range = 12*(pi/180) #[rad]
 sundial_interval = 4*(pi/180) #[rad]
 sundial_image = pg.Surface((0, 0))
+timewarp = 1
 
 # Main game loop
 run = True
 while run:
 
     delta_time = clock.tick(FPS) / 1000
-    date += timedelta(seconds=delta_time)
+    date += timedelta(seconds=delta_time*timewarp)
     mouse_pos = pg.mouse.get_pos()
     # Looping over all events and handling them
     for event in pg.event.get():
@@ -309,16 +312,14 @@ while run:
 
     # Crude ship movement
     pressed_keys = pg.key.get_pressed()
-    new_latitude = ship_latitude
-    new_longitude = ship_longitude
-    if pressed_keys[K_w]:
-        new_latitude += ship_velocity * delta_time
-    if pressed_keys[K_s]:
-        new_latitude -= ship_velocity * delta_time
-    if pressed_keys[K_d]:
-        new_longitude += ship_velocity * delta_time
     if pressed_keys[K_a]:
-        new_longitude -= ship_velocity * delta_time
+        ship_heading -= ship_angular_velocity*delta_time
+    if pressed_keys[K_d]:
+        ship_heading += ship_angular_velocity*delta_time
+
+    new_latitude = ship_latitude + ship_velocity*cos(ship_heading)*delta_time*timewarp
+    new_longitude = ship_longitude + ship_velocity*sin(ship_heading)*delta_time*timewarp/cos(ship_latitude)
+
     if not is_on_land(project_spherical(new_latitude, new_longitude)):
         ship_latitude = new_latitude
         ship_longitude = new_longitude
@@ -346,7 +347,12 @@ while run:
     ship_position_y = MAP_HEIGHT - ship_position_y
     ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
     ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
-    pg.draw.circle(screen, "red", (ship_position_x_screen, ship_position_y_screen), 3)
+    w, h, p = 9, 11, 10 # width, height, padding of the triangle
+    tmp_surf = pg.Surface((w+2*p, h+2*p), pg.SRCALPHA)
+    pg.draw.polygon(tmp_surf, "red", [[p+w//2, p], [p, p+h-1], [p+w-1, p+h-1]])
+    tmp_surf = pg.transform.rotozoom(tmp_surf, ship_heading*(-180/pi), 1)
+    render_rect = tmp_surf.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
+    screen.blit(tmp_surf, render_rect)
 
     # Drawing dark overlay
     visibility_radius = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level/cos(ship_latitude)
