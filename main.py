@@ -166,11 +166,11 @@ def create_sundial_plot(latitude, longitude, start_lat, stop_lat, interval, date
         ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2)))
 
     elevation, azimuth = get_sun_position(latitude, longitude, date)
-    shadow_length = sundial_height/tan(elevation)
+    shadow_length = sundial_height/tan(elevation) if elevation > min_elevation else 0
     ax.plot([azimuth+pi, azimuth+pi], [0, shadow_length], color="grey", linewidth=2, label="Shadow")
     ax.set_rmin(0)
     ax.legend()
-    fig.show()
+    plt.savefig('data/sundial.png', bbox_inches='tight', dpi=200)
 
 # Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
@@ -187,6 +187,17 @@ def is_zoom_out_allowed(zoom_level):
 def quit_game():
     global run
     run = False
+
+# Action function for the "Sundial" button
+def show_sundial():
+    global sundial_shown, sundial_image
+    sundial_shown = not sundial_shown
+    if not sundial_shown:
+        return
+    latitude_rounded = (pi/180)*round(ship_latitude*(180/pi), 0)
+    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded-sundial_range, latitude_rounded+sundial_range,
+                        sundial_interval, date, pi/6)
+    sundial_image = pg.image.load("data/sundial.png")
 
 def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
@@ -226,9 +237,9 @@ clock = pg.time.Clock()
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
 font = pg.font.SysFont('Arial', 20, bold=True)
-buttons = []
 quit_button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font, quit_game)
-buttons.append(quit_button)
+sundial_button = Button(120, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "black", "Sundial", font, show_sundial)
+buttons = [quit_button, sundial_button]
 
 FPS = 60
 MAX_ZOOM = 6.0
@@ -242,12 +253,18 @@ ship_latitude = (60*(pi/180))
 ship_longitude = 0
 ship_velocity = 0.01 #[rad/second]
 horizon_distance = 50 #[km]
+date = datetime(900, 5, 1, 20, 0, 0)
+sundial_shown = False
+sundial_range = 12*(pi/180) #[rad]
+sundial_interval = 4*(pi/180) #[rad]
+sundial_image = pg.Surface((0, 0))
 
 # Main game loop
 run = True
 while run:
 
     delta_time = clock.tick(FPS) / 1000
+    date += timedelta(seconds=delta_time)
     mouse_pos = pg.mouse.get_pos()
     # Looping over all events and handling them
     for event in pg.event.get():
@@ -338,6 +355,13 @@ while run:
     pg.draw.circle(overlay, "white", (ship_position_x_screen, ship_position_y_screen), visibility_radius)
     overlay.set_colorkey("white")
     screen.blit(overlay, (0, 0))
+
+    # Drawing the sundial
+    if sundial_shown and sundial_image is not None:
+        sundial_ar = sundial_image.width/sundial_image.height
+        scaled_sundial_width = SCREEN_HEIGHT*sundial_ar
+        sundial_image_scaled = pg.transform.smoothscale(sundial_image, (scaled_sundial_width, SCREEN_HEIGHT))
+        screen.blit(sundial_image_scaled, (SCREEN_WIDTH-scaled_sundial_width, 0))
 
     # Drawing buttons
     for button in buttons:
