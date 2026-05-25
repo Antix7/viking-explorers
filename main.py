@@ -359,7 +359,7 @@ sundial_range = 10*(pi/180) #[rad] 10 degrees up and down
 sundial_interval = 4*(pi/180) #[rad]
 sundial_image = pg.Surface((0, 0))
 timewarp_factor = 0
-timewarp_multiplier = 12
+timewarp_multiplier = 15
 timewarp = 1
 main_screen_shown = True
 
@@ -490,10 +490,13 @@ while run:
     screen.blit(tmp_surf, render_rect)
 
     # Drawing a dark overlay around the ship
-    visibility_radius = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level/cos(ship_latitude)
+    visibility_radius_v = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level
+    visibility_radius_h = visibility_radius_v/cos(ship_latitude)
+    ellipse_rect = pg.Rect(0, 0, visibility_radius_h, visibility_radius_v)
+    ellipse_rect.center = (ship_position_x_screen, ship_position_y_screen)
     overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
     overlay.fill(FOG_COLOR)
-    pg.draw.circle(overlay, "white", (ship_position_x_screen, ship_position_y_screen), visibility_radius)
+    pg.draw.ellipse(overlay, "white", ellipse_rect)
     overlay.set_colorkey("white")
     screen.blit(overlay, (0, 0))
 
