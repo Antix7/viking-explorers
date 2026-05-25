@@ -251,7 +251,7 @@ def load_map():
     map_surface = pg.surfarray.make_surface(rgb_map)
     return land_sea_mask, map_surface, MAP_WIDTH, MAP_HEIGHT
 def load_main_screen_text():
-    with open("data/main_screen_text.txt") as file:
+    with open("data/main_screen_text.txt", encoding="utf-8") as file:
         return file.read().strip('\n')
 
 # Checks whether a given position is a land tile
@@ -316,6 +316,7 @@ SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
 pg.display.set_caption("Viking Explorers")
 clock = pg.time.Clock()
+font_small = pg.font.SysFont("segoeuisymbol", 12, bold=False)
 font = pg.font.SysFont("segoeuisymbol", 20, bold=False)
 font_big = pg.font.SysFont("segoeuisymbol", 40, bold=False)
 
@@ -358,7 +359,7 @@ sundial_range = 10*(pi/180) #[rad] 10 degrees up and down
 sundial_interval = 4*(pi/180) #[rad]
 sundial_image = pg.Surface((0, 0))
 timewarp_factor = 0
-timewarp_multiplier = 10
+timewarp_multiplier = 12
 timewarp = 1
 main_screen_shown = True
 
@@ -370,7 +371,7 @@ rendered_text = render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH*
 text_rect = rendered_text.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.45))
 main_screen.blit(rendered_text, text_rect)
 continue_button_pos = (text_rect.right-150, text_rect.bottom+10)
-continue_button = Button(screen, *continue_button_pos, 150, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Start game!", font, start_game)
+continue_button = Button(screen, *continue_button_pos, 150, 40, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Start game!", font, start_game)
 
 while main_screen_shown:
     clock.tick(FPS)
@@ -503,10 +504,16 @@ while run:
         sundial_image_scaled = pg.transform.smoothscale(sundial_image, (scaled_sundial_width, SCREEN_HEIGHT))
         screen.blit(sundial_image_scaled, (SCREEN_WIDTH-scaled_sundial_width, 0))
 
-    # Drawing the buttons
+    # Drawing the buttons and on-screen variables
     for button in buttons:
         button.draw()
     timewarp_controls.draw()
+    sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
+    sun_elevation = round(sun_elevation*(180/pi), 1)
+    sun_elevation_text = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", True, "white")
+    screen.blit(sun_elevation_text, (15, 100))
+    anchor_text = font_small.render("Anchor: "+("up" if sailing else "down"), True, "white")
+    screen.blit(anchor_text, (15, 115))
 
     pg.display.flip()
 
