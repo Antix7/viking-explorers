@@ -1,4 +1,4 @@
-data/*
-!data/land_sea_mask.npz
+data/sundial.png
+data/elevation_map.tif
 .idea/
 sun_position_test.py

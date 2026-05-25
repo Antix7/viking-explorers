@@ -219,6 +219,10 @@ def quit_game():
     global run
     run = False
 
+def start_game():
+    global main_screen_shown
+    main_screen_shown = False
+
 # Action function for the "Sundial" button
 def show_sundial():
     global sundial_shown, sundial_image
@@ -248,6 +252,10 @@ def load_map():
     map_surface = pg.surfarray.make_surface(rgb_map)
     return land_sea_mask, map_surface, MAP_WIDTH, MAP_HEIGHT
 
+def load_main_screen_text():
+    with open("data/main_screen_text.txt") as file:
+        return file.read().strip('\n')
+
 def is_on_land(position_tuple):
     x, y = position_tuple
     x = int(round(x, 0))
@@ -255,6 +263,43 @@ def is_on_land(position_tuple):
     if 0 <= x < MAP_WIDTH and 0 <= y < MAP_HEIGHT:
         return raw_map[y][x]
     return 1
+
+def render_wrapped_text(text, font, color, max_width):
+    words = text.split()
+    lines = []
+    current_line = []
+    for word in words:
+        test_line = ' '.join(current_line + [word])
+        test_width, _ = font.size(test_line)
+        if test_width <= max_width:
+            current_line.append(word)
+        else:
+            lines.append(' '.join(current_line))
+            current_line = [word]
+    if current_line:
+        lines.append(' '.join(current_line))
+    rendered_lines = [font.render(line, True, color) for line in lines]
+    line_height = font.get_linesize()
+    total_height = line_height * len(rendered_lines)
+    total_width = max(surf.get_width() for surf in rendered_lines)
+    result = pg.Surface((total_width, total_height), pg.SRCALPHA)
+    for i, line_surf in enumerate(rendered_lines):
+        result.blit(line_surf, (0, i * line_height))
+    return result
+
+def render_paragraphs(text, font, color, max_width, spacing):
+    paragraphs = text.split("\n")
+    rendered_paragraphs = []
+    for paragraph in paragraphs:
+        rendered_paragraphs.append(render_wrapped_text(paragraph, font, color, max_width))
+    total_height = sum(p.get_height() for p in rendered_paragraphs) + spacing*(len(paragraphs)-1)
+    total_width = max(p.get_width() for p in rendered_paragraphs)
+    result = pg.Surface((total_width, total_height), pg.SRCALPHA)
+    current_y = 0
+    for surface in rendered_paragraphs:
+        result.blit(surface, (0, current_y))
+        current_y += surface.get_height() + spacing
+    return result
 
 # Setting up pygame
 pg.init()
@@ -299,6 +344,27 @@ sundial_image = pg.Surface((0, 0))
 timewarp_factor = 0
 timewarp_multiplier = 10
 timewarp = 1
+main_screen_shown = True
+
+# Setting up main screen
+main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+main_screen.fill(FOG_COLOR)
+main_screen_text = load_main_screen_text()
+rendered_text = render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH*0.8, 10)
+text_rect = rendered_text.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.4))
+main_screen.blit(rendered_text, text_rect)
+continue_button_pos = (text_rect.right-150, text_rect.bottom+10)
+continue_button = Button(screen, *continue_button_pos, 150, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Start game!", font, start_game)
+
+while main_screen_shown:
+    clock.tick(FPS)
+    mouse_pos = pg.mouse.get_pos()
+    for event in pg.event.get():
+        continue_button.handle_event(event, mouse_pos)
+    continue_button.update(mouse_pos)
+    screen.blit(main_screen, (0, 0))
+    continue_button.draw()
+    pg.display.flip()
 
 # Main game loop
 run = True
