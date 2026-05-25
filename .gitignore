@@ -1,3 +1,4 @@
 data/*
-!data/game_map.jpg
+!data/land_sea_mask.npz
 .idea/
+sun_position_test.py
