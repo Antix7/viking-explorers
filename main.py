@@ -325,7 +325,8 @@ BUTTON_HOVER_COLOR = pg.Color("#777777")
 quit_button = Button(screen, 10, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "red", "Exit", font, quit_game)
 sundial_button = Button(screen, 120, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Sundial", font, show_sundial)
 buttons = [quit_button, sundial_button]
-timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, 3)
+num_timewarp_buttons = 3
+timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, num_timewarp_buttons)
 
 # Game state definitions
 FPS = 60
@@ -413,6 +414,10 @@ while run:
         if event.type == pg.KEYDOWN:
             if event.key == pg.K_SPACE:
                 sailing = not sailing
+            if event.key == pg.K_LEFT:
+                timewarp_factor = max(0, timewarp_factor-1)
+            if event.key == pg.K_RIGHT:
+                timewarp_factor = min(timewarp_factor+1, num_timewarp_buttons-1)
 
     # Handling button hover
     for button in buttons:
