@@ -6,7 +6,8 @@ import pygame as pg
 
 
 class Button:
-    def __init__(self, x, y, width, height, base_color, hover_color, text_color, text, font, action):
+    def __init__(self, surface, x, y, width, height, base_color, hover_color, text_color, text, font, action):
+        self.surface = surface
         self.rect = pg.Rect(x, y, width, height)
         self.base_color = base_color
         self.hover_color = hover_color
@@ -22,14 +23,44 @@ class Button:
         else:
             self.current_color = self.base_color
 
+    def update_alt(self, toggled):
+        if toggled:
+            self.current_color = self.hover_color
+        else:
+            self.current_color = self.base_color
+
     def handle_event(self, event, mouse_pos):
         if event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
             if self.rect.collidepoint(mouse_pos):
                 self.action()
 
-    def draw(self, screen):
-        pg.draw.rect(screen, self.current_color, self.rect)
-        screen.blit(self.text_surf, self.text_rect)
+    def draw(self):
+        pg.draw.rect(self.surface, self.current_color, self.rect)
+        self.surface.blit(self.text_surf, self.text_rect)
+
+class TimewarpControls:
+    def __init__(self, surface, x, y, width, height, margin, base_color, hover_color, num_buttons):
+        self.buttons = []
+        r_arrow_char = '\u25B6'
+        for i in range(num_buttons):
+            def change_timewarp(current_i=i): # makes it so that the i value is saved when the function is defined, and not when it's called
+                global timewarp_factor
+                timewarp_factor = current_i
+            button = Button(surface, x+(width+margin)*i, y, width, height, base_color, hover_color,
+                            "black", r_arrow_char*(i+1), font, change_timewarp)
+            self.buttons.append(button)
+
+    def update(self):
+        for i, button in enumerate(self.buttons):
+            button.update_alt(timewarp_factor == i)
+
+    def handle_event(self, event, mouse_pos):
+        for button in self.buttons:
+            button.handle_event(event, mouse_pos)
+
+    def draw(self):
+        for button in self.buttons:
+            button.draw()
 
 
 EARTH_RADIUS = 6371 #[km]
@@ -170,6 +201,7 @@ def create_sundial_plot(latitude, longitude, start_lat, stop_lat, interval, date
     ax.set_rmin(0)
     ax.legend()
     plt.savefig('data/sundial.png', bbox_inches='tight', dpi=200)
+    plt.close(fig)
 
 # Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
@@ -193,8 +225,8 @@ def show_sundial():
     sundial_shown = not sundial_shown
     if not sundial_shown:
         return
-    latitude_rounded = (pi/18)*floor(ship_latitude*(18/pi)) # Rounding down to the nearest 10 degrees
-    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded, latitude_rounded+(pi/18),
+    latitude_rounded = (pi/18)*round(ship_latitude*(18/pi), 0) # Rounding to the nearest 10 degrees
+    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded-sundial_range, latitude_rounded+sundial_range,
                         sundial_interval, date, pi/6)
     sundial_image = pg.image.load("data/sundial.png")
 
@@ -226,7 +258,6 @@ def is_on_land(position_tuple):
 
 # Setting up pygame
 pg.init()
-
 screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
 SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
@@ -235,11 +266,15 @@ clock = pg.time.Clock()
 
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
-font = pg.font.SysFont('Arial', 20, bold=True)
-quit_button = Button(10, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "red", "Exit", font, quit_game)
-sundial_button = Button(120, 10, 100, 30, pg.Color("#999999"), pg.Color("#777777"), "black", "Sundial", font, show_sundial)
+font = pg.font.SysFont("segoeuisymbol", 20, bold=False)
+BUTTON_BASE_COLOR = pg.Color("#999999")
+BUTTON_HOVER_COLOR = pg.Color("#777777")
+quit_button = Button(screen, 10, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "red", "Exit", font, quit_game)
+sundial_button = Button(screen, 120, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Sundial", font, show_sundial)
 buttons = [quit_button, sundial_button]
+timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, 3)
 
+# Game state definitions
 FPS = 60
 MAX_ZOOM = 6.0
 MIN_ZOOM = 0.5
@@ -250,15 +285,19 @@ camera_y = 1600
 lmb_held_down = False
 ship_latitude = (60*(pi/180))
 ship_longitude = 0
-ship_velocity = 0.01 #[rad/s]
+ship_velocity = 5 #[m/s]
+ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = False
-ship_angular_velocity = 2 #[rad/s]
+ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
 horizon_distance = 50 #[km]
 date = datetime(900, 5, 1, 20, 0, 0)
 sundial_shown = False
-sundial_interval = 2*(pi/180) #[rad]
+sundial_range = 10*(pi/180) #[rad] 10 degrees up and down
+sundial_interval = 4*(pi/180) #[rad]
 sundial_image = pg.Surface((0, 0))
+timewarp_factor = 0
+timewarp_multiplier = 10
 timewarp = 1
 
 # Main game loop
@@ -267,7 +306,9 @@ while run:
 
     delta_time = clock.tick(FPS) / 1000
     date += timedelta(seconds=delta_time*timewarp)
+    timewarp = timewarp_multiplier**(timewarp_factor+1) # Lowest timewarp is faster than real-time
     mouse_pos = pg.mouse.get_pos()
+
     # Looping over all events and handling them
     for event in pg.event.get():
 
@@ -277,6 +318,7 @@ while run:
         # Handling button presses
         for button in buttons:
             button.handle_event(event, mouse_pos)
+        timewarp_controls.handle_event(event, mouse_pos)
 
         # Zooming of the map
         if event.type == pg.MOUSEWHEEL:
@@ -301,6 +343,7 @@ while run:
     # Handling button hover
     for button in buttons:
         button.update(mouse_pos)
+    timewarp_controls.update()
 
     # Panning of the map
     if pg.mouse.get_pressed()[0]:
@@ -317,12 +360,12 @@ while run:
     # Ship movement
     pressed_keys = pg.key.get_pressed()
     if pressed_keys[pg.K_a]:
-        ship_heading -= ship_angular_velocity*delta_time
+        ship_heading -= ship_turning_velocity * delta_time
     if pressed_keys[pg.K_d]:
-        ship_heading += ship_angular_velocity*delta_time
+        ship_heading += ship_turning_velocity * delta_time
 
-    new_latitude = ship_latitude + ship_velocity*cos(ship_heading)*delta_time*timewarp
-    new_longitude = ship_longitude + ship_velocity*sin(ship_heading)*delta_time*timewarp/cos(ship_latitude)
+    new_latitude = ship_latitude + ship_angular_velocity * cos(ship_heading) * delta_time * timewarp
+    new_longitude = ship_longitude + ship_angular_velocity * sin(ship_heading) * delta_time * timewarp / cos(ship_latitude)
 
     if not is_on_land(project_spherical(new_latitude, new_longitude)) and sailing:
         ship_latitude = new_latitude
@@ -375,7 +418,8 @@ while run:
 
     # Drawing buttons
     for button in buttons:
-        button.draw(screen)
+        button.draw()
+    timewarp_controls.draw()
 
     pg.display.flip()
 
