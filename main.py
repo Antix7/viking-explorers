@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 import numpy as np
 import matplotlib.pyplot as plt
 import pygame as pg
-from pygame.constants import *
 
 
 class Button:
@@ -194,8 +193,8 @@ def show_sundial():
     sundial_shown = not sundial_shown
     if not sundial_shown:
         return
-    latitude_rounded = (pi/180)*round(ship_latitude*(180/pi), 0)
-    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded-sundial_range, latitude_rounded+sundial_range,
+    latitude_rounded = (pi/18)*floor(ship_latitude*(18/pi)) # Rounding down to the nearest 10 degrees
+    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded, latitude_rounded+(pi/18),
                         sundial_interval, date, pi/6)
     sundial_image = pg.image.load("data/sundial.png")
 
@@ -252,13 +251,13 @@ lmb_held_down = False
 ship_latitude = (60*(pi/180))
 ship_longitude = 0
 ship_velocity = 0.01 #[rad/s]
+sailing = False
 ship_angular_velocity = 2 #[rad/s]
 ship_heading = 0
 horizon_distance = 50 #[km]
 date = datetime(900, 5, 1, 20, 0, 0)
 sundial_shown = False
-sundial_range = 12*(pi/180) #[rad]
-sundial_interval = 4*(pi/180) #[rad]
+sundial_interval = 2*(pi/180) #[rad]
 sundial_image = pg.Surface((0, 0))
 timewarp = 1
 
@@ -272,7 +271,7 @@ while run:
     # Looping over all events and handling them
     for event in pg.event.get():
 
-        if event.type == QUIT:
+        if event.type == pg.QUIT:
             run = False
 
         # Handling button presses
@@ -280,7 +279,7 @@ while run:
             button.handle_event(event, mouse_pos)
 
         # Zooming of the map
-        if event.type == MOUSEWHEEL:
+        if event.type == pg.MOUSEWHEEL:
             zoom_exponent = 0
             if event.y > 0:
                 zoom_exponent = 1
@@ -293,6 +292,11 @@ while run:
             mouse_x, mouse_y = pg.mouse.get_pos()
             camera_x += mouse_x  * (1/old_zoom - 1/zoom_level)
             camera_y += mouse_y * (1/old_zoom - 1/zoom_level)
+
+        # Starting and stopping the ship
+        if event.type == pg.KEYDOWN:
+            if event.key == pg.K_SPACE:
+                sailing = not sailing
 
     # Handling button hover
     for button in buttons:
@@ -310,17 +314,17 @@ while run:
     else:
         lmb_held_down = False
 
-    # Crude ship movement
+    # Ship movement
     pressed_keys = pg.key.get_pressed()
-    if pressed_keys[K_a]:
+    if pressed_keys[pg.K_a]:
         ship_heading -= ship_angular_velocity*delta_time
-    if pressed_keys[K_d]:
+    if pressed_keys[pg.K_d]:
         ship_heading += ship_angular_velocity*delta_time
 
     new_latitude = ship_latitude + ship_velocity*cos(ship_heading)*delta_time*timewarp
     new_longitude = ship_longitude + ship_velocity*sin(ship_heading)*delta_time*timewarp/cos(ship_latitude)
 
-    if not is_on_land(project_spherical(new_latitude, new_longitude)):
+    if not is_on_land(project_spherical(new_latitude, new_longitude)) and sailing:
         ship_latitude = new_latitude
         ship_longitude = new_longitude
 
