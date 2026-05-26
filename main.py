@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import matplotlib.pyplot as plt
 import pygame as pg
+import pygame.freetype as ft
 
 # Implementation of a Button class, since pygame doesn't have one
 class Button:
@@ -13,8 +14,7 @@ class Button:
         self.hover_color = hover_color
         self.current_color = base_color
         self.action = action
-        self.text_surf = font.render(text, True, text_color)
-        self.text_rect = self.text_surf.get_rect()
+        self.text_surf, self.text_rect = font.render(text, text_color)
         self.text_rect.center = self.rect.center
 
     def update(self, mouse_pos):
@@ -270,13 +270,14 @@ def is_on_land(position_tuple):
     return 1
 
 # Renders a block of text wrapped to a specific width
-def render_wrapped_text(text, font, color, max_width):
+def render_wrapped_text(text, font, color, max_width, line_spacing):
     words = text.split()
     lines = []
     current_line = []
     for word in words:
         test_line = ' '.join(current_line + [word])
-        test_width, _ = font.size(test_line)
+        _, test_rect = font.render(test_line, color)
+        test_width = test_rect.width
         if test_width <= max_width:
             current_line.append(word)
         else:
@@ -284,8 +285,8 @@ def render_wrapped_text(text, font, color, max_width):
             current_line = [word]
     if current_line:
         lines.append(' '.join(current_line))
-    rendered_lines = [font.render(line, True, color) for line in lines]
-    line_height = font.get_linesize()
+    rendered_lines = [font.render(line, color)[0] for line in lines]
+    line_height = rendered_lines[0].get_rect().height + line_spacing
     total_height = line_height * len(rendered_lines)
     total_width = max(surf.get_width() for surf in rendered_lines)
     result = pg.Surface((total_width, total_height), pg.SRCALPHA)
@@ -294,18 +295,18 @@ def render_wrapped_text(text, font, color, max_width):
     return result
 
 # Renders multiple paragraphs of text at once
-def render_paragraphs(text, font, color, max_width, spacing):
+def render_paragraphs(text, font, color, max_width, line_spacing, par_spacing):
     paragraphs = text.split("\n")
     rendered_paragraphs = []
     for paragraph in paragraphs:
-        rendered_paragraphs.append(render_wrapped_text(paragraph, font, color, max_width))
-    total_height = sum(p.get_height() for p in rendered_paragraphs) + spacing*(len(paragraphs)-1)
+        rendered_paragraphs.append(render_wrapped_text(paragraph, font, color, max_width, line_spacing))
+    total_height = sum(p.get_height() for p in rendered_paragraphs) + par_spacing*(len(paragraphs)-1)
     total_width = max(p.get_width() for p in rendered_paragraphs)
     result = pg.Surface((total_width, total_height), pg.SRCALPHA)
     current_y = 0
     for surface in rendered_paragraphs:
         result.blit(surface, (0, current_y))
-        current_y += surface.get_height() + spacing
+        current_y += surface.get_height() + par_spacing
     return result
 
 # Common color definitions
@@ -322,14 +323,14 @@ SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
 pg.display.set_caption("Viking Explorers")
 clock = pg.time.Clock()
-font_small = pg.font.SysFont("segoeuisymbol", 12, bold=False)
-font = pg.font.SysFont("segoeuisymbol", 20, bold=False)
-font_big = pg.font.SysFont("segoeuisymbol", 40, bold=False)
+font_small = ft.SysFont("segoeuisymbol", 12)
+font = ft.SysFont("segoeuisymbol", 20)
+font_big = ft.SysFont("segoeuisymbol", 40)
 
 # Showing a loading screen
-loading_text = font_big.render("Loading...", True, "white")
+loading_text, loading_text_rect = font_big.render("Loading...", "white")
 screen.fill(FOG_COLOR)
-loading_text_rect = loading_text.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.45))
+loading_text_rect.center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.45)
 screen.blit(loading_text, loading_text_rect)
 pg.display.flip()
 
@@ -373,10 +374,10 @@ main_screen_shown = True
 main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
 main_screen.fill(FOG_COLOR)
 main_screen_text = load_main_screen_text()
-rendered_text = render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH*0.8, 10)
-text_rect = rendered_text.get_rect(center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.45))
-main_screen.blit(rendered_text, text_rect)
-continue_button_pos = (text_rect.right-150, text_rect.bottom+10)
+ms_text_rendered = render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH * 0.8, 2, 10)
+ms_text_rect = ms_text_rendered.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.45))
+main_screen.blit(ms_text_rendered, ms_text_rect)
+continue_button_pos = (ms_text_rect.right-150, ms_text_rect.bottom+10)
 continue_button = Button(screen, *continue_button_pos, 150, 40, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Start game!", font, start_game)
 
 while main_screen_shown:
@@ -512,6 +513,10 @@ while run:
         scaled_sundial_width = SCREEN_HEIGHT*sundial_ar
         sundial_image_scaled = pg.transform.smoothscale(sundial_image, (scaled_sundial_width, SCREEN_HEIGHT))
         screen.blit(sundial_image_scaled, (SCREEN_WIDTH-scaled_sundial_width, 0))
+        disclaimer_text = "For readability, the shadow is shown only for sun elevations greater than 20\u00B0"
+        disclaimer_text_rendered, disclaimer_text_rect = font_small.render(disclaimer_text, "black")
+        disclaimer_text_rect.bottomright = (SCREEN_WIDTH-10, SCREEN_HEIGHT-10)
+        screen.blit(disclaimer_text_rendered, disclaimer_text_rect)
 
     # Drawing the buttons and on-screen variables
     for button in buttons:
@@ -519,9 +524,9 @@ while run:
     timewarp_controls.draw()
     sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
     sun_elevation = round(to_degrees(sun_elevation), 1)
-    sun_elevation_text = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", True, "white")
+    sun_elevation_text, _ = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", "white")
     screen.blit(sun_elevation_text, (15, 100))
-    anchor_text = font_small.render("Anchor: "+("up" if sailing else "down"), True, "white")
+    anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 115))
 
     pg.display.flip()
