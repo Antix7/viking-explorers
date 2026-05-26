@@ -3,6 +3,8 @@
 ## About
 This game was created for a competition in the course AE1205 at TU Delft, with the theme being "Dark Ages". The gameplay consists of navigating a viking ship using only information provided by a sun compass.
 
+To run the program, you first need to install the `pygame-ce`, `numpy` and `matplotlib` packages, and then run `main.py`.
+
 [Link to GitHub repository](https://github.com/Antix7/viking-explorers)
 
 ## Technical challenges
