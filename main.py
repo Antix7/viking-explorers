@@ -69,6 +69,12 @@ MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
 
+# Helper functions to convert between degrees and radians
+def to_radians(degrees):
+    return degrees*(pi/180)
+def to_degrees(radians):
+    return radians*(180/pi)
+
 # Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
 def get_earth_rotation_matrix(earth_rotation_angle):
     return np.array([
@@ -107,7 +113,7 @@ def get_sun_position(latitude, longitude, date):
 
     # Performing coordinate transformations to find the direction of the
     # surface normal vector in the Sun-Earth fixed reference frame (sun is always in the x-direction)
-    earth_axial_tilt = 23.44 * (pi / 180)
+    earth_axial_tilt = to_radians(23.44)
     axial_tilt_matrix = np.array([
         [cos(earth_axial_tilt), 0, -sin(earth_axial_tilt)],
         [0, 1, 0],
@@ -230,9 +236,9 @@ def show_sundial():
     sundial_shown = not sundial_shown
     if not sundial_shown:
         return
-    latitude_rounded = (pi/18)*round(ship_latitude*(18/pi), 0) # Rounding to the nearest 10 degrees
-    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded-sundial_range, latitude_rounded+sundial_range,
-                        sundial_interval, date, pi/6)
+    latitude_rounded = to_radians(round(to_degrees(ship_latitude), -1)) # Rounding to the nearest 10 degrees
+    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded - sundial_range, latitude_rounded + sundial_range,
+                        sundial_interval, date, to_radians(20))
     sundial_image = pg.image.load("data/sundial.png")
 
 def hex_to_rgb(hex_color):
@@ -345,8 +351,8 @@ zoom_factor = 1.2
 camera_x = 10950
 camera_y = 1750
 lmb_held_down = False
-ship_latitude = (59*(pi/180))
-ship_longitude = (5*(pi/180))
+ship_latitude = to_radians(59)
+ship_longitude = to_radians(5)
 ship_velocity = 5 #[m/s]
 ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = False
@@ -355,8 +361,8 @@ ship_heading = 0
 horizon_distance = 50 #[km]
 date = datetime(900, 5, 1, 18, 0, 0)
 sundial_shown = False
-sundial_range = 10*(pi/180) #[rad] 10 degrees up and down
-sundial_interval = 4*(pi/180) #[rad]
+sundial_range = to_radians(10) #[rad] 10 degrees up and down
+sundial_interval = to_radians(4) #[rad]
 sundial_image = pg.Surface((0, 0))
 timewarp_factor = 0
 timewarp_multiplier = 15
@@ -485,7 +491,7 @@ while run:
     w, h, p = 9, 11, 10 # width, height, padding of the triangle representing the ship
     tmp_surf = pg.Surface((w+2*p, h+2*p), pg.SRCALPHA)
     pg.draw.polygon(tmp_surf, "red", [[p+w//2, p], [p, p+h-1], [p+w-1, p+h-1]])
-    tmp_surf = pg.transform.rotozoom(tmp_surf, ship_heading*(-180/pi), 1)
+    tmp_surf = pg.transform.rotozoom(tmp_surf, to_degrees(-ship_heading), 1)
     render_rect = tmp_surf.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
     screen.blit(tmp_surf, render_rect)
 
@@ -512,7 +518,7 @@ while run:
         button.draw()
     timewarp_controls.draw()
     sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
-    sun_elevation = round(sun_elevation*(180/pi), 1)
+    sun_elevation = round(to_degrees(sun_elevation), 1)
     sun_elevation_text = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", True, "white")
     screen.blit(sun_elevation_text, (15, 100))
     anchor_text = font_small.render("Anchor: "+("up" if sailing else "down"), True, "white")
