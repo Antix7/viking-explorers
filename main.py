@@ -11,6 +11,7 @@ EARTH_RADIUS = 6371 #[km]
 MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
+SUNDIAL_SIMULATION_INTERVAL = timedelta(minutes=20)
 
 # Helper functions to convert between degrees and radians
 def to_radians(degrees):
@@ -96,7 +97,7 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
     # This function runs through time and starts recording the position of the Sun after it rises
     # above a minimum elevation, and stops after it goes back below it.
     start_date -= timedelta(days=1)
-    time_step = timedelta(minutes=5)
+    time_step = SUNDIAL_SIMULATION_INTERVAL
     result = {}
     for latitude in latitudes:
 
@@ -104,6 +105,7 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
         elevations = []
         time_offset = timedelta(0)
         previous_elevation = 4 # something larger than pi
+        previous_azimuth = 0
         run = True
         record = False
         success = True
@@ -115,6 +117,8 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
             elevation, azimuth = get_sun_position(latitude, 0, start_date+time_offset)
             if previous_elevation < elevation_bound <= elevation:
                 record = True
+                azimuths.append(previous_azimuth)
+                elevations.append(previous_elevation)
             if record:
                 azimuths.append(azimuth)
                 elevations.append(elevation)
@@ -123,6 +127,7 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
                 run = False
             time_offset += time_step
             previous_elevation = elevation
+            previous_azimuth = azimuth
 
         if success:
             result[latitude] = (np.array(azimuths), np.array(elevations))
@@ -141,6 +146,8 @@ def create_sundial_plot(latitude, longitude, start_lat, stop_lat, interval, date
     ax.set_theta_direction(-1)
     ax.set_yticklabels([])
     ax.set_title("Sundial")
+    plot_max_radius = sundial_height/tan(min_elevation)
+    ax.set_rlim(0, plot_max_radius)
 
     for key, [azimuths, elevations] in sun_path_data.items():
 
@@ -303,7 +310,7 @@ ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = False
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
-horizon_distance = 50 #[km]
+horizon_distance = 80 #[km]
 date = datetime(900, 5, 1, 18, 0, 0)
 sundial_shown = False
 sundial_range = to_radians(10) #[rad] 10 degrees up and down
@@ -341,6 +348,7 @@ run = True
 while run:
 
     delta_time = clock.tick(FPS) / 1000
+    time_since_sundial_refresh += timedelta(seconds=delta_time)
     date += timedelta(seconds=delta_time*timewarp)
     timewarp = timewarp_multiplier**(timewarp_factor+1) # Lowest timewarp is faster than real-time
     mouse_pos = pg.mouse.get_pos()
@@ -456,6 +464,10 @@ while run:
     screen.blit(overlay, (0, 0))
 
     # Drawing the sundial if it's shown
+    if time_since_sundial_refresh >= sundial_refresh_interval:
+        time_since_sundial_refresh = timedelta(0)
+        if sundial_shown:
+            show_sundial(update=True)
     if sundial_shown and sundial_image is not None:
         sundial_ar = sundial_image.width/sundial_image.height
         scaled_sundial_width = SCREEN_HEIGHT*sundial_ar
