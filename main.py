@@ -35,6 +35,7 @@ LAND_COLOR = hex_to_rgb("#905918")
 FOG_COLOR = hex_to_rgb("#333333")
 BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
 BUTTON_HOVER_COLOR = pg.Color("#777777")
+SUNDIAL_BG_COLOR = pg.Color("#fffcf7")
 
 # Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
 def get_earth_rotation_matrix(earth_rotation_angle):
@@ -153,11 +154,19 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
 
     return result
 
+# Optimized renderer object, which pre-renders the sun lines and only updates the shadow's position
 class SundialRenderer:
-    def __init__(self):
+    def __init__(self, image_height):
         self.min_elevation = SUNDIAL_MIN_ELEVATION
-        self.fig, self.ax = plt.subplots(subplot_kw={'projection': 'polar'})
-        # self.fig.set_layout_engine('tight')
+        self.dpi = 200
+        fig_size = image_height/self.dpi
+        self.fig, self.ax = plt.subplots(
+            subplot_kw={"projection": "polar"},
+            dpi=self.dpi,
+            figsize=(fig_size, fig_size)
+        )
+        self.fig.patch.set_alpha(0.0)
+        self.fig.set_layout_engine("constrained")
         self.apply_axis_settings()
         self.background_cache = None
         self.shadow_line = None
@@ -174,9 +183,9 @@ class SundialRenderer:
         self.apply_axis_settings()
         for key, [azimuths, elevations] in sun_path_data.items():
             shadow_lengths = 1/np.tan(elevations)
-            self.ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2))+'\u00B0')
+            self.ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2))+'\u00B0', linewidth=1)
         self.shadow_line, = self.ax.plot([], [], color="grey", linewidth=2, label="Shadow")
-        self.ax.legend(loc='upper right')
+        self.ax.legend(loc="lower right")
         self.fig.canvas.draw()
         self.background_cache = self.fig.canvas.copy_from_bbox(self.fig.bbox)
 
@@ -188,10 +197,11 @@ class SundialRenderer:
         self.ax.draw_artist(self.shadow_line)
         raw_rgba = self.fig.canvas.buffer_rgba()
         size = self.fig.canvas.get_width_height()
-        return pg.image.frombuffer(raw_rgba, size, "RGBA")
+        full_plot = pg.image.frombuffer(raw_rgba, size, "RGBA")
+        plot_bounding_rect = full_plot.get_bounding_rect() # Crops out the transparent margins
+        return full_plot.subsurface(plot_bounding_rect).copy()
 
-sundial_renderer = SundialRenderer()
-
+# Wrapper function that periodically updates the sun lines and outputs a sundial image
 def draw_sundial(latitude, longitude, date):
     global sun_path_data_cache_date
     if date - sun_path_data_cache_date >= timedelta(days=1):
@@ -301,6 +311,8 @@ clock = pg.time.Clock()
 font_small = ft.SysFont("segoeuisymbol", 12)
 font = ft.SysFont("segoeuisymbol", 20)
 font_big = ft.SysFont("segoeuisymbol", 40)
+sundial_height = SCREEN_HEIGHT*0.9
+sundial_renderer = SundialRenderer(sundial_height)
 
 # Showing a loading screen
 loading_text, loading_text_rect = font_big.render("Loading...", "white")
@@ -339,15 +351,12 @@ date = datetime(900, 5, 1, 18, 0, 0)
 sundial_shown = False
 sundial_range = to_radians(10) #[rad] 10 degrees up and down
 sundial_interval = to_radians(4) #[rad]
-sundial_image = pg.Surface((0, 0))
+sun_path_data_cache_date = datetime(1, 1, 1)
 timewarp_factor = 0
 timewarp_multiplier = 15
 timewarp = 1
 main_screen_shown = True
-time_since_sundial_refresh = timedelta(0)
-sundial_refresh_interval = timedelta(seconds=1)
-sun_path_data_cache_date = datetime(1, 1, 1)
-draw_sundial(ship_latitude, ship_longitude, date)
+
 
 # Setting up the main screen
 main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -374,7 +383,6 @@ run = True
 while run:
 
     delta_time = clock.tick(FPS) / 1000
-    time_since_sundial_refresh += timedelta(seconds=delta_time)
     date += timedelta(seconds=delta_time*timewarp)
     timewarp = timewarp_multiplier**(timewarp_factor+1) # Lowest timewarp is faster than real-time
     mouse_pos = pg.mouse.get_pos()
@@ -490,14 +498,15 @@ while run:
     screen.blit(overlay, (0, 0))
 
     # Drawing the sundial if it's shown
-    if time_since_sundial_refresh >= sundial_refresh_interval:
-        time_since_sundial_refresh = timedelta(0)
-
-    if sundial_shown and sundial_image is not None:
-        sundial_ar = sundial_image.width/sundial_image.height
-        scaled_sundial_width = SCREEN_HEIGHT*sundial_ar
-        sundial_image_scaled = pg.transform.smoothscale(sundial_image, (scaled_sundial_width, SCREEN_HEIGHT))
-        screen.blit(sundial_image_scaled, (SCREEN_WIDTH-scaled_sundial_width, 0))
+    if sundial_shown:
+        sundial_image = draw_sundial(ship_latitude, ship_longitude, date)
+        sundial_width, sundial_height = sundial_image.size
+        sundial_rect = sundial_image.get_rect()
+        sundial_rect.right = SCREEN_WIDTH-20
+        sundial_rect.centery = SCREEN_HEIGHT/2
+        bg_rect = pg.Rect(sundial_rect.left-20, 0, SCREEN_WIDTH-sundial_rect.left+20, SCREEN_HEIGHT)
+        pg.draw.rect(screen, SUNDIAL_BG_COLOR, bg_rect)
+        screen.blit(sundial_image, sundial_rect)
         disclaimer_text = "For readability, the shadow is shown only for sun elevations greater than 20\u00B0"
         disclaimer_text_rendered, disclaimer_text_rect = font_small.render(disclaimer_text, "black")
         disclaimer_text_rect.bottomright = (SCREEN_WIDTH-10, SCREEN_HEIGHT-10)
