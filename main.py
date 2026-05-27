@@ -6,10 +6,8 @@ matplotlib.use("Agg") # Force headless mode for matplotlib
 import matplotlib.pyplot as plt
 import pygame as pg
 import pygame.freetype as ft # more sophisticated text rendering library
-from matplotlib.lines import Line2D
-
 from ui_library import Button, TimewarpControls
-import timeit
+
 
 # Helper functions to convert between degrees and radians
 def to_radians(degrees):
@@ -154,7 +152,7 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
 
     return result
 
-# Optimized renderer object, which pre-renders the sun lines and only updates the shadow's position
+# Optimized renderer class, which pre-renders the sun lines and only updates the shadow's position
 class SundialRenderer:
     def __init__(self, image_height):
         self.min_elevation = SUNDIAL_MIN_ELEVATION
@@ -235,6 +233,9 @@ def start_game():
 def show_sundial():
     global sundial_shown
     sundial_shown = not sundial_shown
+def toggle_fog():
+    global is_fog_on
+    is_fog_on = not is_fog_on
 
 # Helper functions for loading files
 def load_map():
@@ -251,7 +252,7 @@ def load_main_screen_text():
     with open("data/main_screen_text.txt", encoding="utf-8") as file:
         return file.read().strip('\n')
 
-# Checks whether a given position is a land tile
+# Checks whether a given position is a land tile, not super accurate
 def is_on_land(position_tuple):
     x, y = position_tuple
     x = int(round(x, 0))
@@ -326,7 +327,8 @@ raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
 quit_button = Button(screen, 10, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "red", "Exit", font, quit_game)
 sundial_button = Button(screen, 120, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Sundial", font, show_sundial)
-buttons = [quit_button, sundial_button]
+toggle_fog_button = Button(screen, 10, SCREEN_HEIGHT-40, 150, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Toggle fog", font, toggle_fog)
+buttons = [quit_button, sundial_button, toggle_fog_button]
 num_timewarp_buttons = 3
 timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, font, num_timewarp_buttons)
 
@@ -334,28 +336,29 @@ timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COL
 FPS = 60
 MAX_ZOOM = 6.0
 MIN_ZOOM = 0.5
-zoom_level = 4.0
-zoom_factor = 1.2
+zoom_level = 4.0 # current zoom level
+zoom_factor = 1.2 # by how much the zoom level changes with each scroll
 camera_x = 10950
 camera_y = 1750
 lmb_held_down = False
 ship_latitude = to_radians(59)
 ship_longitude = to_radians(5)
-ship_velocity = 5 #[m/s]
+ship_velocity = 8 #[m/s] (very fast ship)
 ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = False
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
-horizon_distance = 80 #[km]
+horizon_distance = 100 #[km] (exaggerated for gameplay purposes)
 date = datetime(900, 5, 1, 18, 0, 0)
 sundial_shown = False
 sundial_range = to_radians(10) #[rad] 10 degrees up and down
-sundial_interval = to_radians(4) #[rad]
+sundial_interval = to_radians(4) #[rad] interval between sun lines
 sun_path_data_cache_date = datetime(1, 1, 1)
 timewarp_factor = 0
-timewarp_multiplier = 15
+timewarp_multiplier = 15 # by how much each level of timewarp speeds up the game
 timewarp = 1
 main_screen_shown = True
+is_fog_on = True
 
 
 # Setting up the main screen
@@ -382,6 +385,7 @@ while main_screen_shown:
 run = True
 while run:
 
+    # Updating time
     delta_time = clock.tick(FPS) / 1000
     date += timedelta(seconds=delta_time*timewarp)
     timewarp = timewarp_multiplier**(timewarp_factor+1) # Lowest timewarp is faster than real-time
@@ -466,6 +470,7 @@ while run:
     crop_rect_width = SCREEN_WIDTH / zoom_level
     crop_rect_height = SCREEN_HEIGHT / zoom_level
     crop_rect = pg.Rect(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height)
+    # The subsurface() method doesn't copy the original surface, which is critical for performance
     visible_subsurface = map_surface.subsurface(crop_rect)
     scaled_surface = pg.transform.scale(visible_subsurface, (
         crop_rect_width*zoom_level,
@@ -486,16 +491,17 @@ while run:
     render_rect = tmp_surf.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
     screen.blit(tmp_surf, render_rect)
 
-    # Drawing a dark overlay around the ship
-    visibility_radius_v = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level
-    visibility_radius_h = visibility_radius_v/cos(ship_latitude)
-    ellipse_rect = pg.Rect(0, 0, visibility_radius_h, visibility_radius_v)
-    ellipse_rect.center = (ship_position_x_screen, ship_position_y_screen)
-    overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-    overlay.fill(FOG_COLOR)
-    pg.draw.ellipse(overlay, "white", ellipse_rect)
-    overlay.set_colorkey("white")
-    screen.blit(overlay, (0, 0))
+    # Drawing a dark overlay of fog around the ship
+    if is_fog_on:
+        visibility_radius_v = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level
+        visibility_radius_h = visibility_radius_v/cos(ship_latitude)
+        ellipse_rect = pg.Rect(0, 0, visibility_radius_h, visibility_radius_v)
+        ellipse_rect.center = (ship_position_x_screen, ship_position_y_screen)
+        overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay.fill(FOG_COLOR)
+        pg.draw.ellipse(overlay, "white", ellipse_rect)
+        overlay.set_colorkey("white")
+        screen.blit(overlay, (0, 0))
 
     # Drawing the sundial if it's shown
     if sundial_shown:
@@ -522,6 +528,8 @@ while run:
     screen.blit(sun_elevation_text, (15, 100))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 115))
+    fog_text, _ = font_small.render("Fog: " + ("enabled" if is_fog_on else "disabled"), "white")
+    screen.blit(fog_text, (15, 130))
 
     pg.display.flip()
 
