@@ -1,10 +1,25 @@
 from math import *
 from datetime import datetime, timedelta
 import numpy as np
+import matplotlib
+matplotlib.use("Agg") # Force headless mode for matplotlib
 import matplotlib.pyplot as plt
 import pygame as pg
 import pygame.freetype as ft # more sophisticated text rendering library
-from ui_library import *
+from matplotlib.lines import Line2D
+
+from ui_library import Button, TimewarpControls
+import timeit
+
+# Helper functions to convert between degrees and radians
+def to_radians(degrees):
+    return degrees*(pi/180)
+def to_degrees(radians):
+    return radians*(180/pi)
+
+def hex_to_rgb(hex_color):
+    hex_color = hex_color.lstrip('#')
+    return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
 
 # Constants
 EARTH_RADIUS = 6371 #[km]
@@ -12,12 +27,14 @@ MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
 SUNDIAL_SIMULATION_INTERVAL = timedelta(minutes=20)
+SUNDIAL_MIN_ELEVATION = to_radians(20)
 
-# Helper functions to convert between degrees and radians
-def to_radians(degrees):
-    return degrees*(pi/180)
-def to_degrees(radians):
-    return radians*(180/pi)
+# Common color definitions
+SEA_COLOR = hex_to_rgb("#F1C888")
+LAND_COLOR = hex_to_rgb("#905918")
+FOG_COLOR = hex_to_rgb("#333333")
+BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
+BUTTON_HOVER_COLOR = pg.Color("#777777")
 
 # Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
 def get_earth_rotation_matrix(earth_rotation_angle):
@@ -136,31 +153,55 @@ def get_sun_path_data(latitudes, start_date, elevation_bound):
 
     return result
 
-# Creates a visualization of the sundial using matplotlib and saves it to a file
-def create_sundial_plot(latitude, longitude, start_lat, stop_lat, interval, date, min_elevation, sundial_height=1):
-    latitudes = np.arange(start_lat, stop_lat, interval)
-    sun_path_data = get_sun_path_data(latitudes, date, min_elevation)
+class SundialRenderer:
+    def __init__(self):
+        self.min_elevation = SUNDIAL_MIN_ELEVATION
+        self.fig, self.ax = plt.subplots(subplot_kw={'projection': 'polar'})
+        # self.fig.set_layout_engine('tight')
+        self.apply_axis_settings()
+        self.background_cache = None
+        self.shadow_line = None
 
-    fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
-    ax.set_theta_zero_location("N")
-    ax.set_theta_direction(-1)
-    ax.set_yticklabels([])
-    ax.set_title("Sundial")
-    plot_max_radius = sundial_height/tan(min_elevation)
-    ax.set_rlim(0, plot_max_radius)
+    def apply_axis_settings(self):
+        self.ax.set_theta_zero_location("N")
+        self.ax.set_theta_direction(-1)
+        self.ax.set_yticklabels([])
+        self.ax.set_title("Sundial")
+        self.ax.set_rlim(0, 1 / np.tan(self.min_elevation))
 
-    for key, [azimuths, elevations] in sun_path_data.items():
+    def generate_static_background(self, sun_path_data):
+        self.ax.clear()
+        self.apply_axis_settings()
+        for key, [azimuths, elevations] in sun_path_data.items():
+            shadow_lengths = 1/np.tan(elevations)
+            self.ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2))+'\u00B0')
+        self.shadow_line, = self.ax.plot([], [], color="grey", linewidth=2, label="Shadow")
+        self.ax.legend(loc='upper right')
+        self.fig.canvas.draw()
+        self.background_cache = self.fig.canvas.copy_from_bbox(self.fig.bbox)
 
-        shadow_lengths = sundial_height/np.tan(elevations)
-        ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2))+'\u00B0')
+    def get_sundial_image(self, elevation, azimuth):
+        self.fig.canvas.restore_region(self.background_cache)
+        shadow_length = 1 / np.tan(elevation) if elevation > self.min_elevation else 0
+        self.shadow_line.set_xdata([azimuth + np.pi, azimuth + np.pi])
+        self.shadow_line.set_ydata([0, shadow_length])
+        self.ax.draw_artist(self.shadow_line)
+        raw_rgba = self.fig.canvas.buffer_rgba()
+        size = self.fig.canvas.get_width_height()
+        return pg.image.frombuffer(raw_rgba, size, "RGBA")
 
+sundial_renderer = SundialRenderer()
+
+def draw_sundial(latitude, longitude, date):
+    global sun_path_data_cache_date
+    if date - sun_path_data_cache_date >= timedelta(days=1):
+        sun_path_data_cache_date = date
+        latitude_rounded = to_radians(round(to_degrees(ship_latitude), -1))  # Rounding to the nearest 10 degrees
+        latitudes = np.arange(latitude_rounded - sundial_range, latitude_rounded + sundial_range, sundial_interval)
+        sun_path_data = get_sun_path_data(latitudes, date, SUNDIAL_MIN_ELEVATION)
+        sundial_renderer.generate_static_background(sun_path_data)
     elevation, azimuth = get_sun_position(latitude, longitude, date)
-    shadow_length = sundial_height/tan(elevation) if elevation > min_elevation else 0
-    ax.plot([azimuth+pi, azimuth+pi], [0, shadow_length], color="grey", linewidth=2, label="Shadow")
-    ax.set_rmin(0)
-    ax.legend()
-    plt.savefig('data/sundial.png', bbox_inches='tight', dpi=200)
-    plt.close(fig)
+    return sundial_renderer.get_sundial_image(elevation, azimuth)
 
 # Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
@@ -181,20 +222,9 @@ def quit_game():
 def start_game():
     global main_screen_shown
     main_screen_shown = False
-def show_sundial(update=False):
-    global sundial_shown, sundial_image
-    if not update:
-        sundial_shown = not sundial_shown
-    if not sundial_shown:
-        return
-    latitude_rounded = to_radians(round(to_degrees(ship_latitude), -1)) # Rounding to the nearest 10 degrees
-    create_sundial_plot(ship_latitude, ship_longitude, latitude_rounded - sundial_range, latitude_rounded + sundial_range,
-                        sundial_interval, date, to_radians(20))
-    sundial_image = pg.image.load("data/sundial.png")
-
-def hex_to_rgb(hex_color):
-    hex_color = hex_color.lstrip('#')
-    return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
+def show_sundial():
+    global sundial_shown
+    sundial_shown = not sundial_shown
 
 # Helper functions for loading files
 def load_map():
@@ -260,12 +290,6 @@ def render_paragraphs(text, font, color, max_width, line_spacing, par_spacing):
         current_y += surface.get_height() + par_spacing
     return result
 
-# Common color definitions
-SEA_COLOR = hex_to_rgb("#F1C888")
-LAND_COLOR = hex_to_rgb("#905918")
-FOG_COLOR = hex_to_rgb("#333333")
-BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
-BUTTON_HOVER_COLOR = pg.Color("#777777")
 
 # Setting up pygame
 pg.init()
@@ -320,8 +344,10 @@ timewarp_factor = 0
 timewarp_multiplier = 15
 timewarp = 1
 main_screen_shown = True
-time_since_sundial_refresh = timedelta()
+time_since_sundial_refresh = timedelta(0)
 sundial_refresh_interval = timedelta(seconds=1)
+sun_path_data_cache_date = datetime(1, 1, 1)
+draw_sundial(ship_latitude, ship_longitude, date)
 
 # Setting up the main screen
 main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -466,8 +492,7 @@ while run:
     # Drawing the sundial if it's shown
     if time_since_sundial_refresh >= sundial_refresh_interval:
         time_since_sundial_refresh = timedelta(0)
-        if sundial_shown:
-            show_sundial(update=True)
+
     if sundial_shown and sundial_image is not None:
         sundial_ar = sundial_image.width/sundial_image.height
         scaled_sundial_width = SCREEN_HEIGHT*sundial_ar
