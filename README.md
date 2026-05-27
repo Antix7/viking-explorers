@@ -17,3 +17,6 @@ Simulating a sundial requires answering the following question: for a given time
 
 ### User interface
 The pygame library only provides functions for drawing simple shapes and text, so creating a full UI required some work. I implemented custom button objects to handle user interactions, and created functions for rendering large bodies of text at once, since pygame doesn't support text wrapping.
+
+## Sources
+[Topographic-bathymetric map of the world](https://www.ncei.noaa.gov/products/etopo-global-relief-model)
