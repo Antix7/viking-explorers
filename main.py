@@ -3,65 +3,8 @@ from datetime import datetime, timedelta
 import numpy as np
 import matplotlib.pyplot as plt
 import pygame as pg
-import pygame.freetype as ft
-
-# Implementation of a Button class, since pygame doesn't have one
-class Button:
-    def __init__(self, surface, x, y, width, height, base_color, hover_color, text_color, text, font, action):
-        self.surface = surface
-        self.rect = pg.Rect(x, y, width, height)
-        self.base_color = base_color
-        self.hover_color = hover_color
-        self.current_color = base_color
-        self.action = action
-        self.text_surf, self.text_rect = font.render(text, text_color)
-        self.text_rect.center = self.rect.center
-
-    def update(self, mouse_pos):
-        if self.rect.collidepoint(mouse_pos):
-            self.current_color = self.hover_color
-        else:
-            self.current_color = self.base_color
-
-    def update_alt(self, toggled):
-        if toggled:
-            self.current_color = self.hover_color
-        else:
-            self.current_color = self.base_color
-
-    def handle_event(self, event, mouse_pos):
-        if event.type == pg.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(mouse_pos):
-                self.action()
-
-    def draw(self):
-        pg.draw.rect(self.surface, self.current_color, self.rect)
-        self.surface.blit(self.text_surf, self.text_rect)
-
-# A set of buttons that are used to toggle between different timewarp rates
-class TimewarpControls:
-    def __init__(self, surface, x, y, width, height, margin, base_color, hover_color, num_buttons):
-        self.buttons = []
-        r_arrow_char = '\u25B6'
-        for i in range(num_buttons):
-            def change_timewarp(current_i=i): # makes it so that the i value is saved when the function is defined, and not when it's called
-                global timewarp_factor
-                timewarp_factor = current_i
-            button = Button(surface, x+(width+margin)*i, y, width, height, base_color, hover_color,
-                            "black", r_arrow_char*(i+1), font, change_timewarp)
-            self.buttons.append(button)
-
-    def update(self):
-        for i, button in enumerate(self.buttons):
-            button.update_alt(timewarp_factor == i)
-
-    def handle_event(self, event, mouse_pos):
-        for button in self.buttons:
-            button.handle_event(event, mouse_pos)
-
-    def draw(self):
-        for button in self.buttons:
-            button.draw()
+import pygame.freetype as ft # more sophisticated text rendering library
+from ui_library import *
 
 # Constants
 EARTH_RADIUS = 6371 #[km]
@@ -231,9 +174,10 @@ def quit_game():
 def start_game():
     global main_screen_shown
     main_screen_shown = False
-def show_sundial():
+def show_sundial(update=False):
     global sundial_shown, sundial_image
-    sundial_shown = not sundial_shown
+    if not update:
+        sundial_shown = not sundial_shown
     if not sundial_shown:
         return
     latitude_rounded = to_radians(round(to_degrees(ship_latitude), -1)) # Rounding to the nearest 10 degrees
@@ -341,7 +285,7 @@ quit_button = Button(screen, 10, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_CO
 sundial_button = Button(screen, 120, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Sundial", font, show_sundial)
 buttons = [quit_button, sundial_button]
 num_timewarp_buttons = 3
-timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, num_timewarp_buttons)
+timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, font, num_timewarp_buttons)
 
 # Game state definitions
 FPS = 60
@@ -369,6 +313,8 @@ timewarp_factor = 0
 timewarp_multiplier = 15
 timewarp = 1
 main_screen_shown = True
+time_since_sundial_refresh = timedelta()
+sundial_refresh_interval = timedelta(seconds=1)
 
 # Setting up the main screen
 main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -408,7 +354,9 @@ while run:
         # Handling button presses
         for button in buttons:
             button.handle_event(event, mouse_pos)
-        timewarp_controls.handle_event(event, mouse_pos)
+        timewarp_return = timewarp_controls.handle_event(event, mouse_pos)
+        if timewarp_return is not None:
+            timewarp_factor = timewarp_return
 
         # Zooming of the map
         if event.type == pg.MOUSEWHEEL:
@@ -438,7 +386,7 @@ while run:
     # Handling button hover
     for button in buttons:
         button.update(mouse_pos)
-    timewarp_controls.update()
+    timewarp_controls.update(timewarp_factor=timewarp_factor)
 
     # Panning of the map
     if pg.mouse.get_pressed()[0]:
