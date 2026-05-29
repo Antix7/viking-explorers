@@ -214,6 +214,7 @@ def draw_sundial(latitude, longitude, date):
 
 # Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
+    longitude = (longitude+pi)%(2*pi) - pi
     x = MAP_SCALE * (longitude-MAP_LON_START)
     y = MAP_SCALE * (latitude-MAP_LAT_START)
     return x, y
@@ -435,9 +436,14 @@ while run:
         ship_heading -= ship_turning_velocity * delta_time
     if pressed_keys[pg.K_d]:
         ship_heading += ship_turning_velocity * delta_time
+    # Updating the heading to keep the ship moving along a great circle (using Clairaut's relation)
+    if sailing:
+        ship_heading += ship_angular_velocity * sin(ship_heading) * tan(ship_latitude) * delta_time * timewarp
 
     new_latitude = ship_latitude + ship_angular_velocity * cos(ship_heading) * delta_time * timewarp
     new_longitude = ship_longitude + ship_angular_velocity * sin(ship_heading) * delta_time * timewarp / cos(ship_latitude)
+    # Longitude first on purpose, because heading is defined CW and atan2 CCW
+    apparent_ship_heading = atan2(new_longitude-ship_longitude, new_latitude-ship_latitude)
 
     if not is_on_land(project_spherical(new_latitude, new_longitude)) and sailing:
         ship_latitude = new_latitude
@@ -465,12 +471,12 @@ while run:
     screen.fill((0, 0, 0))
     screen.blit(scaled_surface, (offset_x, offset_y))
 
-    # Drawing the ship's position as an arrow
+    # Drawing the ship's position
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
     ship_position_y = MAP_HEIGHT - ship_position_y
     ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
     ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
-    ship_sprite = get_ship_sprite(ship_heading)
+    ship_sprite = get_ship_sprite(apparent_ship_heading)
     render_rect = ship_sprite.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
     screen.blit(ship_sprite, render_rect)
 
