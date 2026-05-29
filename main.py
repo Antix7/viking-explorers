@@ -6,7 +6,7 @@ matplotlib.use("Agg") # Force headless mode for matplotlib
 import matplotlib.pyplot as plt
 import pygame as pg
 import pygame.freetype as ft # more sophisticated text rendering library
-from ui_library import Button, TimewarpControls
+import ui_library as ui
 
 
 # Helper functions to convert between degrees and radians
@@ -33,6 +33,7 @@ LAND_COLOR = hex_to_rgb("#905918")
 FOG_COLOR = hex_to_rgb("#333333")
 BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
 BUTTON_HOVER_COLOR = pg.Color("#777777")
+POPUP_BG_COLOR = pg.Color("#dddddd")
 SUNDIAL_BG_COLOR = pg.Color("#fffcf7")
 
 # Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
@@ -233,9 +234,15 @@ def start_game():
 def show_sundial():
     global sundial_shown
     sundial_shown = not sundial_shown
-def toggle_fog():
+def toggle_fog_popup():
     global is_fog_on
-    is_fog_on = not is_fog_on
+    if is_fog_on:
+        toggle_fog_popup.shown = True
+    else:
+        is_fog_on = True
+def disable_fog():
+    global is_fog_on
+    is_fog_on = False
 
 # Helper functions for loading files
 def load_map():
@@ -261,46 +268,6 @@ def is_on_land(position_tuple):
         return raw_map[y][x]
     return 1
 
-# Renders a block of text wrapped to a specific width
-def render_wrapped_text(text, font, color, max_width, line_spacing):
-    words = text.split()
-    lines = []
-    current_line = []
-    for word in words:
-        test_line = ' '.join(current_line + [word])
-        _, test_rect = font.render(test_line, color)
-        test_width = test_rect.width
-        if test_width <= max_width:
-            current_line.append(word)
-        else:
-            lines.append(' '.join(current_line))
-            current_line = [word]
-    if current_line:
-        lines.append(' '.join(current_line))
-    rendered_lines = [font.render(line, color)[0] for line in lines]
-    line_height = rendered_lines[0].get_rect().height + line_spacing
-    total_height = line_height * len(rendered_lines)
-    total_width = max(surf.get_width() for surf in rendered_lines)
-    result = pg.Surface((total_width, total_height), pg.SRCALPHA)
-    for i, line_surf in enumerate(rendered_lines):
-        result.blit(line_surf, (0, i * line_height))
-    return result
-
-# Renders multiple paragraphs of text at once
-def render_paragraphs(text, font, color, max_width, line_spacing, par_spacing):
-    paragraphs = text.split("\n")
-    rendered_paragraphs = []
-    for paragraph in paragraphs:
-        rendered_paragraphs.append(render_wrapped_text(paragraph, font, color, max_width, line_spacing))
-    total_height = sum(p.get_height() for p in rendered_paragraphs) + par_spacing*(len(paragraphs)-1)
-    total_width = max(p.get_width() for p in rendered_paragraphs)
-    result = pg.Surface((total_width, total_height), pg.SRCALPHA)
-    current_y = 0
-    for surface in rendered_paragraphs:
-        result.blit(surface, (0, current_y))
-        current_y += surface.get_height() + par_spacing
-    return result
-
 
 # Setting up pygame
 pg.init()
@@ -312,6 +279,7 @@ clock = pg.time.Clock()
 font_small = ft.SysFont("segoeuisymbol", 12)
 font = ft.SysFont("segoeuisymbol", 20)
 font_big = ft.SysFont("segoeuisymbol", 40)
+theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2)
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
 
@@ -325,12 +293,14 @@ pg.display.flip()
 # Setting up pygame (continued)
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 
-quit_button = Button(screen, 10, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "red", "Exit", font, quit_game)
-sundial_button = Button(screen, 120, 10, 100, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Sundial", font, show_sundial)
-toggle_fog_button = Button(screen, 10, SCREEN_HEIGHT-40, 150, 30, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Toggle fog", font, toggle_fog)
+quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, quit_game)
+sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
+toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog_popup)
 buttons = [quit_button, sundial_button, toggle_fog_button]
 num_timewarp_buttons = 3
-timewarp_controls = TimewarpControls(screen, 10, 60, 80, 30, 10, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, font, num_timewarp_buttons)
+timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
+toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the game incredibly easy. Use this option only if you got completely lost."
+toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, disable_fog)
 
 # Game state definitions
 FPS = 60
@@ -345,7 +315,7 @@ ship_latitude = to_radians(59)
 ship_longitude = to_radians(5)
 ship_velocity = 8 #[m/s] (very fast ship)
 ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
-sailing = False
+sailing = True
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
 horizon_distance = 100 #[km] (exaggerated for gameplay purposes)
@@ -365,11 +335,11 @@ is_fog_on = True
 main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
 main_screen.fill(FOG_COLOR)
 main_screen_text = load_main_screen_text()
-ms_text_rendered = render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH * 0.8, 2, 10)
+ms_text_rendered = ui.render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH * 0.8, 2, 10)
 ms_text_rect = ms_text_rendered.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.45))
 main_screen.blit(ms_text_rendered, ms_text_rect)
 continue_button_pos = (ms_text_rect.right-150, ms_text_rect.bottom+10)
-continue_button = Button(screen, *continue_button_pos, 150, 40, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", "Start game!", font, start_game)
+continue_button = ui.Button(screen, pg.Rect(continue_button_pos, (150, 40)), "Start game!", theme, start_game)
 
 while main_screen_shown:
     clock.tick(FPS)
@@ -403,6 +373,7 @@ while run:
         timewarp_return = timewarp_controls.handle_event(event, mouse_pos)
         if timewarp_return is not None:
             timewarp_factor = timewarp_return
+        toggle_fog_popup.handle_event(event, mouse_pos)
 
         # Zooming of the map
         if event.type == pg.MOUSEWHEEL:
@@ -433,6 +404,7 @@ while run:
     for button in buttons:
         button.update(mouse_pos)
     timewarp_controls.update(timewarp_factor=timewarp_factor)
+    toggle_fog_popup.update(mouse_pos)
 
     # Panning of the map
     if pg.mouse.get_pressed()[0]:
@@ -522,14 +494,17 @@ while run:
     for button in buttons:
         button.draw()
     timewarp_controls.draw()
+
     sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
     sun_elevation = round(to_degrees(sun_elevation), 1)
     sun_elevation_text, _ = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", "white")
-    screen.blit(sun_elevation_text, (15, 100))
+    screen.blit(sun_elevation_text, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
-    screen.blit(anchor_text, (15, 115))
+    screen.blit(anchor_text, (15, 105))
     fog_text, _ = font_small.render("Fog: " + ("enabled" if is_fog_on else "disabled"), "white")
-    screen.blit(fog_text, (15, 130))
+    screen.blit(fog_text, (15, 120))
+
+    toggle_fog_popup.draw()
 
     pg.display.flip()
 
