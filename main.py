@@ -259,11 +259,11 @@ def load_main_screen_text():
     with open("data/main_screen_text.txt", encoding="utf-8") as file:
         return file.read().strip('\n')
 
-# Checks whether a given position is a land tile, not super accurate
+# Checks whether a given position is a land tile
 def is_on_land(position_tuple):
     x, y = position_tuple
-    x = int(round(x, 0))
-    y = MAP_HEIGHT - int(round(y, 0))
+    x = int(x)
+    y = int(MAP_HEIGHT - y)
     if 0 <= x < MAP_WIDTH and 0 <= y < MAP_HEIGHT:
         return raw_map[y][x]
     return 1
@@ -304,7 +304,7 @@ toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, disable_fog)
 
 # Game state definitions
 FPS = 60
-MAX_ZOOM = 6.0
+MAX_ZOOM = 8.0
 MIN_ZOOM = 0.5
 zoom_level = 4.0 # current zoom level
 zoom_factor = 1.2 # by how much the zoom level changes with each scroll
@@ -437,10 +437,10 @@ while run:
     camera_y = min(max(camera_y, 0), MAP_HEIGHT - SCREEN_HEIGHT / zoom_level)
 
     # Drawing the map onto the screen
-    crop_rect_x = camera_x
-    crop_rect_y = camera_y
-    crop_rect_width = SCREEN_WIDTH / zoom_level
-    crop_rect_height = SCREEN_HEIGHT / zoom_level
+    crop_rect_x = int(camera_x)
+    crop_rect_y = int(camera_y)
+    crop_rect_width = min(int(SCREEN_WIDTH / zoom_level)+2, MAP_WIDTH - crop_rect_x) # 2px more for sub-pixel shift
+    crop_rect_height = min(int(SCREEN_HEIGHT / zoom_level)+2, MAP_HEIGHT - crop_rect_y)
     crop_rect = pg.Rect(crop_rect_x, crop_rect_y, crop_rect_width, crop_rect_height)
     # The subsurface() method doesn't copy the original surface, which is critical for performance
     visible_subsurface = map_surface.subsurface(crop_rect)
@@ -448,8 +448,11 @@ while run:
         crop_rect_width*zoom_level,
         crop_rect_height*zoom_level
     ))
+    # Fractional pixel offset so that the map doesn't jump around
+    offset_x = -(camera_x - crop_rect_x) * zoom_level
+    offset_y = -(camera_y - crop_rect_y) * zoom_level
     screen.fill((0, 0, 0))
-    screen.blit(scaled_surface, (0, 0))
+    screen.blit(scaled_surface, (offset_x, offset_y))
 
     # Drawing the ship's position as an arrow
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
