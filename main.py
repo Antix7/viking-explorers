@@ -255,6 +255,13 @@ def load_map():
     rgb_map = np.transpose(rgb_map, (1, 0, 2))
     map_surface = pg.surfarray.make_surface(rgb_map)
     return land_sea_mask, map_surface, MAP_WIDTH, MAP_HEIGHT
+def load_ship_sprites():
+    sprites = []
+    for i in range(17, 1, -1):
+        image = pg.image.load(f"data/ship/ship{i}.png").convert_alpha()
+        scaled_image = pg.transform.smoothscale(image, (16, 16))
+        sprites.append(image)
+    return sprites
 def load_main_screen_text():
     with open("data/main_screen_text.txt", encoding="utf-8") as file:
         return file.read().strip('\n')
@@ -268,6 +275,9 @@ def is_on_land(position_tuple):
         return raw_map[y][x]
     return 1
 
+def get_ship_sprite(heading):
+    sprite_id = round((heading*16)/(2*pi))%16
+    return ship_sprites[sprite_id]
 
 # Setting up pygame
 pg.init()
@@ -292,6 +302,7 @@ pg.display.flip()
 
 # Setting up pygame (continued)
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
+ship_sprites = load_ship_sprites()
 
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, quit_game)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
@@ -459,12 +470,9 @@ while run:
     ship_position_y = MAP_HEIGHT - ship_position_y
     ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
     ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
-    w, h, p = 9, 11, 10 # width, height, padding of the triangle representing the ship
-    tmp_surf = pg.Surface((w+2*p, h+2*p), pg.SRCALPHA)
-    pg.draw.polygon(tmp_surf, "red", [[p+w//2, p], [p, p+h-1], [p+w-1, p+h-1]])
-    tmp_surf = pg.transform.rotozoom(tmp_surf, to_degrees(-ship_heading), 1)
-    render_rect = tmp_surf.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
-    screen.blit(tmp_surf, render_rect)
+    ship_sprite = get_ship_sprite(ship_heading)
+    render_rect = ship_sprite.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
+    screen.blit(ship_sprite, render_rect)
 
     # Drawing a dark overlay of fog around the ship
     if is_fog_on:
