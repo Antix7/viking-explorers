@@ -21,3 +21,4 @@ The pygame library only provides functions for drawing simple shapes and text, s
 ## Sources
 [Topographic-bathymetric map of the world](https://www.ncei.noaa.gov/products/etopo-global-relief-model)
 [Viking ship sprite](https://helianthus-games.itch.io/pixel-art-viking-ship-16-directions)
+[Viking helmet icon](https://www.shutterstock.com/image-vector/this-viking-hat-icon-pixel-art-2686193895)

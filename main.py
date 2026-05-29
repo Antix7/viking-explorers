@@ -2,7 +2,7 @@ from math import *
 from datetime import datetime, timedelta
 import numpy as np
 import matplotlib
-matplotlib.use("Agg") # Force headless mode for matplotlib
+matplotlib.use("Agg") # Force headless mode for matplotlib, for sundial rendering performance
 import matplotlib.pyplot as plt
 import pygame as pg
 import pygame.freetype as ft # more sophisticated text rendering library
@@ -276,16 +276,19 @@ def is_on_land(position_tuple):
         return raw_map[y][x]
     return 1
 
+# Returns a ship sprite that matches given heading the closest
 def get_ship_sprite(heading):
     sprite_id = round((heading*16)/(2*pi))%16
     return ship_sprites[sprite_id]
 
+
 # Setting up pygame
 pg.init()
+pg.display.set_icon(pg.image.load("data/icon.ico"))
+pg.display.set_caption("Viking Explorers")
 screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
 SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
-pg.display.set_caption("Viking Explorers")
 clock = pg.time.Clock()
 font_small = ft.SysFont("segoeuisymbol", 12)
 font = ft.SysFont("segoeuisymbol", 20)
