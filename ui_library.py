@@ -87,7 +87,7 @@ class Popup:
         self.theme = theme
         self.rendered_text = render_wrapped_text(text, theme.font, theme.btn_text, width, theme.line_spacing)
         text_rect = self.rendered_text.get_rect()
-        self.rect = pg.Rect(0, 0, width+20, text_rect.height+70)
+        self.rect = pg.Rect(0, 0, width+40, text_rect.height+90)
         self.rect.center = (theme.screen_width//2, theme.screen_height//2)
         self.shown = False
         def cont():
@@ -97,10 +97,10 @@ class Popup:
             self.shown = False
             btn1_callback()
         btn_rect = pg.Rect(0, 0, 100, 30)
-        btn_rect.bottomright = (self.rect.right-10, self.rect.bottom-10)
+        btn_rect.bottomright = (self.rect.right-20, self.rect.bottom-20)
         continue_button = Button(surface, btn_rect, btn2_text, theme, cont)
         btn_rect = pg.Rect(0, 0, 100, 30)
-        btn_rect.bottomright = (self.rect.right - 120, self.rect.bottom - 10)
+        btn_rect.bottomright = (self.rect.right - 130, self.rect.bottom - 20)
         cancel_button = Button(surface, btn_rect, btn1_text, theme, cancel)
         self.buttons = [continue_button, cancel_button]
 
@@ -117,7 +117,7 @@ class Popup:
     def draw(self):
         if self.shown:
             pg.draw.rect(self.surface, self.theme.popup_bg, self.rect)
-            self.surface.blit(self.rendered_text, (self.rect.x+10, self.rect.y+10))
+            self.surface.blit(self.rendered_text, (self.rect.x+20, self.rect.y+20))
             for button in self.buttons:
                 button.draw()
 

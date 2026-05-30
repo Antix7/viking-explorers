@@ -398,7 +398,7 @@ sundial_range = to_radians(10) #[rad] 10 degrees up and down
 sundial_interval = to_radians(4) #[rad] interval between sun lines
 sun_path_data_cache_date = datetime(1, 1, 1)
 timewarp_factor = 0
-timewarp_multiplier = 15 # by how much each level of timewarp speeds up the game
+timewarp_multiplier = 20 # by how much each level of timewarp speeds up the game
 timewarp = 1
 main_screen_shown = True
 is_fog_on = True
@@ -605,6 +605,7 @@ while run:
     win = check_winning_condition(ship_position_x, ship_position_y, is_on_shore)
     if win and not has_won:
         has_won = True
+        timewarp_factor = 0
         win_popup.shown = True
 
     # Drawing the buttons and on-screen variables
