@@ -25,7 +25,7 @@ MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
 SUNDIAL_SIMULATION_INTERVAL = timedelta(minutes=20)
-SUNDIAL_MIN_ELEVATION = to_radians(20)
+SUNDIAL_MIN_ELEVATION = to_radians(15)
 
 # Common color definitions
 SEA_COLOR = hex_to_rgb("#F1C888")
@@ -287,7 +287,7 @@ def round_to_multiple(x, multiple):
 class FogRenderer:
     def __init__(self, color):
         self.color = color
-        self.cache = {}
+        self.cache = {} # What if the cache gets too big? Problem for future me...
         self.ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # ease-in ease-out sine
 
     def draw_fog(self, width, height, fog_start_frac=0.5, steps=50):
@@ -305,7 +305,6 @@ class FogRenderer:
         return surface_blurred
 
     def get_fog(self, width, height):
-        print(len(self.cache))
         caching_threshold = 5 #[px]
         width = round_to_multiple(width, caching_threshold)
         height = round_to_multiple(height, caching_threshold)
@@ -368,7 +367,7 @@ ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = True
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
-horizon_distance = 100 #[km] (exaggerated for gameplay purposes)
+horizon_distance = 120 #[km] (exaggerated for gameplay purposes)
 date = datetime(900, 5, 1, 18, 0, 0)
 sundial_shown = False
 sundial_range = to_radians(10) #[rad] 10 degrees up and down
@@ -538,6 +537,10 @@ while run:
 
 
     # Drawing the sundial if it's shown
+    sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
+    is_night = sun_elevation < SUNDIAL_MIN_ELEVATION
+    sun_elevation = round(to_degrees(sun_elevation), 1)
+
     if sundial_shown:
         sundial_image = draw_sundial(ship_latitude, ship_longitude, date)
         sundial_width, sundial_height = sundial_image.size
@@ -547,18 +550,25 @@ while run:
         bg_rect = pg.Rect(sundial_rect.left-20, 0, SCREEN_WIDTH-sundial_rect.left+20, SCREEN_HEIGHT)
         pg.draw.rect(screen, SUNDIAL_BG_COLOR, bg_rect)
         screen.blit(sundial_image, sundial_rect)
-        disclaimer_text = "For readability, the shadow is shown only for sun elevations greater than 20\u00B0"
+        disclaimer_text = "For readability, the shadow is shown only for sun elevations greater than 15\u00B0"
         disclaimer_text_rendered, disclaimer_text_rect = font_small.render(disclaimer_text, "black")
         disclaimer_text_rect.bottomright = (SCREEN_WIDTH-10, SCREEN_HEIGHT-10)
         screen.blit(disclaimer_text_rendered, disclaimer_text_rect)
+        time_text, time_text_rect = font.render("Nighttime" if is_night else "Daytime", "black")
+        time_text_rect.topright = (bg_rect.right - 10, bg_rect.top + 10)
+        screen.blit(time_text, time_text_rect)
+        # Darkening the sundial if it's nighttime
+        if is_night:
+            tmp = pg.Surface((bg_rect.width, bg_rect.height), pg.SRCALPHA)
+            pg.draw.rect(tmp, (*FOG_COLOR, 80), [0, 0, bg_rect.width, bg_rect.height])
+            screen.blit(tmp, bg_rect)
+
 
     # Drawing the buttons and on-screen variables
     for button in buttons:
         button.draw()
     timewarp_controls.draw()
 
-    sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
-    sun_elevation = round(to_degrees(sun_elevation), 1)
     sun_elevation_text, _ = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", "white")
     screen.blit(sun_elevation_text, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
