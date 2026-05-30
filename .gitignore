@@ -1,3 +1,4 @@
 data/sundial.png
 data/elevation_map.tif
 .idea/
+map_parser.py
