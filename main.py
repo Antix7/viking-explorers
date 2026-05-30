@@ -25,7 +25,7 @@ MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
 MAP_LON_START = -pi
 SUNDIAL_SIMULATION_INTERVAL = timedelta(minutes=20)
-SUNDIAL_MIN_ELEVATION = to_radians(15)
+SUNDIAL_MIN_ELEVATION = to_radians(20)
 
 # Common color definitions
 SEA_COLOR = hex_to_rgb("#F1C888")
@@ -184,7 +184,10 @@ class SundialRenderer:
             shadow_lengths = 1/np.tan(elevations)
             self.ax.plot(azimuths+pi, shadow_lengths, label=str(round(np.degrees(key), 2))+'\u00B0', linewidth=1)
         self.shadow_line, = self.ax.plot([], [], color="grey", linewidth=2, label="Shadow")
-        self.ax.legend(loc="lower right")
+        self.ax.legend(
+            loc="lower right", fontsize=8, labelspacing=0.3, borderpad=0.4,
+            handlelength=1.5, handletextpad=0.5, bbox_to_anchor=(1.15, -0.1)
+        )
         self.fig.canvas.draw()
         self.background_cache = self.fig.canvas.copy_from_bbox(self.fig.bbox)
 
@@ -280,14 +283,16 @@ def get_ship_sprite(heading):
     sprite_id = round((heading*16)/(2*pi))%16
     return ship_sprites[sprite_id]
 
-def round_to_multiple(x, multiple):
-    return multiple * round(x/multiple)
+# Rounds x to the nearest multiple of m
+def round_to_multiple(x, m):
+    return m * round(x / m)
 
 # An optimized fog renderer that caches textures for performance
 class FogRenderer:
     def __init__(self, color):
         self.color = color
-        self.cache = {} # What if the cache gets too big? Problem for future me...
+        self.cache = {}
+        self.max_cache_size = 100
         self.ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # ease-in ease-out sine
 
     def draw_fog(self, width, height, fog_start_frac=0.5, steps=50):
@@ -311,12 +316,16 @@ class FogRenderer:
         if (width, height) in self.cache.keys():
             return self.cache[(width, height)]
         fog_surface = self.draw_fog(width, height)
+        if len(self.cache) > self.max_cache_size: # Clearing the cache
+            self.cache = {}
         self.cache[(width, height)] = fog_surface
         return fog_surface
 
+# Checks whether a point (x, y) is on the left side of the line defined by two points
 def is_left_of_line(x1, y1, x2, y2, x, y):
     return (x2-x1)*(y-y1)-(y2-y1)*(x-x1) > 0
 
+# Checks if the player has sailed past Iceland and reached a shoreline
 def check_winning_condition(x, y, is_on_shore):
     win = is_left_of_line(11700, 0, 7600, 2300, x, y)
     win = win or is_left_of_line(8900, 0, 7800, 3200, x, y)
@@ -331,9 +340,9 @@ screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
 SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
 clock = pg.time.Clock()
-font_small = ft.SysFont("segoeuisymbol", 12)
-font = ft.SysFont("segoeuisymbol", 20)
-font_big = ft.SysFont("segoeuisymbol", 40)
+font_small = ft.Font("data/Inter-Regular.ttf", 12)
+font = ft.Font("data/Inter-Regular.ttf", 20)
+font_big = ft.Font("data/Inter-Regular.ttf", 40)
 theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2)
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
@@ -346,10 +355,11 @@ loading_text_rect.center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.45)
 screen.blit(loading_text, loading_text_rect)
 pg.display.flip()
 
-# Setting up pygame (continued)
+# Loading data
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 ship_sprites = load_ship_sprites()
 
+# Setting up pygame (continued)
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, quit_game)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
 toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog)
@@ -368,18 +378,18 @@ MAX_ZOOM = 8.0
 MIN_ZOOM = 0.5
 zoom_level = 4.0 # current zoom level
 zoom_factor = 1.2 # by how much the zoom level changes with each scroll
-camera_x = 10950
-camera_y = 1750
-lmb_held_down = False
 ship_latitude = to_radians(59)
 ship_longitude = to_radians(5)
-ship_velocity = 80 #[m/s] (very fast ship)
+camera_x = project_spherical(ship_latitude, ship_longitude)[0] - SCREEN_WIDTH/(2*zoom_level)
+camera_y = MAP_HEIGHT - project_spherical(ship_latitude, ship_longitude)[1] - SCREEN_HEIGHT/(2*zoom_level)
+lmb_held_down = False
+ship_velocity = 8 #[m/s] (very fast ship)
 ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = True
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
-horizon_distance = 120 #[km] (exaggerated for gameplay purposes)
-date = datetime(900, 5, 1, 18, 0, 0)
+horizon_distance = 150 #[km] (exaggerated for gameplay purposes)
+date = datetime(900, 5, 1, 16, 0, 0)
 sundial_shown = False
 sundial_range = to_radians(10) #[rad] 10 degrees up and down
 sundial_interval = to_radians(4) #[rad] interval between sun lines
@@ -394,13 +404,15 @@ has_won = False # Prevents repeated showing of win screen after pressing "contin
 
 
 # Setting up the main screen
-main_screen = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
-main_screen.fill(FOG_COLOR)
 main_screen_text = load_main_screen_text()
 ms_text_rendered = ui.render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH * 0.8, 2, 10)
 ms_text_rect = ms_text_rendered.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.45))
-main_screen.blit(ms_text_rendered, ms_text_rect)
-continue_button_pos = (ms_text_rect.right-150, ms_text_rect.bottom+10)
+if ms_text_rect.top < 0: # Support for smaller screens
+    scrollable = True
+    ms_text_rect.top = 10
+else:
+    scrollable = False
+continue_button_pos = [ms_text_rect.right-150, min(ms_text_rect.bottom+10, SCREEN_HEIGHT-50)]
 continue_button = ui.Button(screen, pg.Rect(continue_button_pos, (150, 40)), "Start game!", theme, start_game)
 
 while main_screen_shown:
@@ -408,10 +420,17 @@ while main_screen_shown:
     mouse_pos = pg.mouse.get_pos()
     for event in pg.event.get():
         continue_button.handle_event(event, mouse_pos)
+        if event.type == pg.MOUSEWHEEL and scrollable:
+            if event.y > 0:
+                ms_text_rect.top = min(ms_text_rect.top+20, 10)
+            elif event.y < 0:
+                ms_text_rect.bottom = max(ms_text_rect.bottom-20, SCREEN_HEIGHT-80)
     continue_button.update(mouse_pos)
-    screen.blit(main_screen, (0, 0))
+    screen.fill(FOG_COLOR)
+    screen.blit(ms_text_rendered, ms_text_rect)
     continue_button.draw()
     pg.display.flip()
+
 
 # Main game loop
 run = True
@@ -566,7 +585,7 @@ while run:
         bg_rect = pg.Rect(sundial_rect.left-20, 0, SCREEN_WIDTH-sundial_rect.left+20, SCREEN_HEIGHT)
         pg.draw.rect(screen, SUNDIAL_BG_COLOR, bg_rect)
         screen.blit(sundial_image, sundial_rect)
-        disclaimer_text = "For readability, the shadow is shown only for sun elevations greater than 15\u00B0"
+        disclaimer_text = "For readability, the shadow is shown only for sun elevations greater than 20\u00B0"
         disclaimer_text_rendered, disclaimer_text_rect = font_small.render(disclaimer_text, "black")
         disclaimer_text_rect.bottomright = (SCREEN_WIDTH-10, SCREEN_HEIGHT-10)
         screen.blit(disclaimer_text_rendered, disclaimer_text_rect)
