@@ -30,7 +30,7 @@ SUNDIAL_MIN_ELEVATION = to_radians(15)
 # Common color definitions
 SEA_COLOR = hex_to_rgb("#F1C888")
 LAND_COLOR = hex_to_rgb("#905918")
-FOG_COLOR = hex_to_rgb("#333333")
+FOG_COLOR = hex_to_rgb("#222222")
 BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
 BUTTON_HOVER_COLOR = pg.Color("#777777")
 POPUP_BG_COLOR = pg.Color("#dddddd")
@@ -235,7 +235,7 @@ def start_game():
 def show_sundial():
     global sundial_shown
     sundial_shown = not sundial_shown
-def toggle_fog_popup():
+def toggle_fog():
     global is_fog_on
     if is_fog_on:
         toggle_fog_popup.shown = True
@@ -314,6 +314,14 @@ class FogRenderer:
         self.cache[(width, height)] = fog_surface
         return fog_surface
 
+def is_left_of_line(x1, y1, x2, y2, x, y):
+    return (x2-x1)*(y-y1)-(y2-y1)*(x-x1) > 0
+
+def check_winning_condition(x, y, is_on_shore):
+    win = is_left_of_line(11700, 0, 7600, 2300, x, y)
+    win = win or is_left_of_line(8900, 0, 7800, 3200, x, y)
+    win = win and is_on_shore
+    return win
 
 # Setting up pygame
 pg.init()
@@ -344,12 +352,15 @@ ship_sprites = load_ship_sprites()
 
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, quit_game)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
-toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog_popup)
+toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog)
 buttons = [quit_button, sundial_button, toggle_fog_button]
 num_timewarp_buttons = 3
 timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
 toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the game incredibly easy. Use this option only if you got completely lost."
-toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, disable_fog)
+toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, "Cancel", lambda:None, "Continue",  disable_fog)
+win_text = "Congratulations! You have set foot on new shores, and your great expedition shall be written into the history books. You can continue playing or exit the game."
+win_popup = ui.Popup(screen, win_text, 500, theme, "Exit", quit_game, "Continue", lambda:None)
+popups = [toggle_fog_popup, win_popup]
 
 # Game state definitions
 FPS = 60
@@ -362,7 +373,7 @@ camera_y = 1750
 lmb_held_down = False
 ship_latitude = to_radians(59)
 ship_longitude = to_radians(5)
-ship_velocity = 8 #[m/s] (very fast ship)
+ship_velocity = 80 #[m/s] (very fast ship)
 ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
 sailing = True
 ship_turning_velocity = 2 #[rad/s]
@@ -378,6 +389,8 @@ timewarp_multiplier = 15 # by how much each level of timewarp speeds up the game
 timewarp = 1
 main_screen_shown = True
 is_fog_on = True
+win = False
+has_won = False # Prevents repeated showing of win screen after pressing "continue"
 
 
 # Setting up the main screen
@@ -422,7 +435,8 @@ while run:
         timewarp_return = timewarp_controls.handle_event(event, mouse_pos)
         if timewarp_return is not None:
             timewarp_factor = timewarp_return
-        toggle_fog_popup.handle_event(event, mouse_pos)
+        for popup in popups:
+            popup.handle_event(event, mouse_pos)
 
         # Zooming of the map
         if event.type == pg.MOUSEWHEEL:
@@ -453,7 +467,8 @@ while run:
     for button in buttons:
         button.update(mouse_pos)
     timewarp_controls.update(timewarp_factor=timewarp_factor)
-    toggle_fog_popup.update(mouse_pos)
+    for popup in popups:
+        popup.update(mouse_pos)
 
     # Panning of the map
     if pg.mouse.get_pressed()[0]:
@@ -481,8 +496,9 @@ while run:
     new_longitude = ship_longitude + ship_angular_velocity * sin(ship_heading) * delta_time * timewarp / cos(ship_latitude)
     # Longitude first on purpose, because heading is defined CW and atan2 CCW
     apparent_ship_heading = atan2(new_longitude-ship_longitude, new_latitude-ship_latitude)
+    is_on_shore = is_on_land(project_spherical(new_latitude, new_longitude))
 
-    if not is_on_land(project_spherical(new_latitude, new_longitude)) and sailing:
+    if not is_on_shore and sailing:
         ship_latitude = max(to_radians(-89), min(to_radians(89), new_latitude)) # avoid singularities at the poles
         ship_longitude = new_longitude
 
@@ -563,6 +579,11 @@ while run:
             pg.draw.rect(tmp, (*FOG_COLOR, 80), [0, 0, bg_rect.width, bg_rect.height])
             screen.blit(tmp, bg_rect)
 
+    # Checking for win condition
+    win = check_winning_condition(ship_position_x, ship_position_y, is_on_shore)
+    if win and not has_won:
+        has_won = True
+        win_popup.shown = True
 
     # Drawing the buttons and on-screen variables
     for button in buttons:
@@ -576,7 +597,8 @@ while run:
     fog_text, _ = font_small.render("Fog: " + ("enabled" if is_fog_on else "disabled"), "white")
     screen.blit(fog_text, (15, 120))
 
-    toggle_fog_popup.draw()
+    for popup in popups:
+        popup.draw()
 
     pg.display.flip()
 

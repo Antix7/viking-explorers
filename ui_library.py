@@ -82,7 +82,7 @@ class TimewarpControls:
 
 # Popup with a cancel/continue choice
 class Popup:
-    def __init__(self, surface, text, width, theme, callback):
+    def __init__(self, surface, text, width, theme, btn1_text, btn1_callback, btn2_text, btn2_callback):
         self.surface = surface
         self.theme = theme
         self.rendered_text = render_wrapped_text(text, theme.font, theme.btn_text, width, theme.line_spacing)
@@ -92,15 +92,16 @@ class Popup:
         self.shown = False
         def cont():
             self.shown = False
-            callback()
+            btn2_callback()
         def cancel():
             self.shown = False
+            btn1_callback()
         btn_rect = pg.Rect(0, 0, 100, 30)
         btn_rect.bottomright = (self.rect.right-10, self.rect.bottom-10)
-        continue_button = Button(surface, btn_rect, "Continue", theme, cont)
+        continue_button = Button(surface, btn_rect, btn2_text, theme, cont)
         btn_rect = pg.Rect(0, 0, 100, 30)
         btn_rect.bottomright = (self.rect.right - 120, self.rect.bottom - 10)
-        cancel_button = Button(surface, btn_rect, "Cancel", theme, cancel)
+        cancel_button = Button(surface, btn_rect, btn1_text, theme, cancel)
         self.buttons = [continue_button, cancel_button]
 
     def update(self, mouse_pos):
