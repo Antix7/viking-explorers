@@ -280,6 +280,41 @@ def get_ship_sprite(heading):
     sprite_id = round((heading*16)/(2*pi))%16
     return ship_sprites[sprite_id]
 
+def round_to_multiple(x, multiple):
+    return multiple * round(x/multiple)
+
+# An optimized fog renderer that caches textures for performance
+class FogRenderer:
+    def __init__(self, color):
+        self.color = color
+        self.cache = {}
+        self.ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # ease-in ease-out sine
+
+    def draw_fog(self, width, height, fog_start_frac=0.5, steps=50):
+        margin = 10
+        surface = pg.Surface((width+2*margin, height+2*margin), pg.SRCALPHA)
+        pg.draw.ellipse(surface, self.color, pg.Rect((0, 0), (width+2*margin, height+2*margin)))
+        for i in range(steps, int(fog_start_frac*steps), -1):
+            ellipse_ratio = i/steps
+            alpha_ratio = (ellipse_ratio - fog_start_frac)/(1 - fog_start_frac)
+            rect = pg.Rect(0, 0, width*ellipse_ratio, height*ellipse_ratio)
+            rect.center = (width/2+margin, height/2+margin)
+            alpha = int(255*self.ease(alpha_ratio))
+            pg.draw.ellipse(surface, (*self.color, alpha), rect)
+        surface_blurred = pg.transform.box_blur(surface, margin//2)
+        return surface_blurred
+
+    def get_fog(self, width, height):
+        print(len(self.cache))
+        caching_threshold = 5 #[px]
+        width = round_to_multiple(width, caching_threshold)
+        height = round_to_multiple(height, caching_threshold)
+        if (width, height) in self.cache.keys():
+            return self.cache[(width, height)]
+        fog_surface = self.draw_fog(width, height)
+        self.cache[(width, height)] = fog_surface
+        return fog_surface
+
 
 # Setting up pygame
 pg.init()
@@ -295,6 +330,7 @@ font_big = ft.SysFont("segoeuisymbol", 40)
 theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2)
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
+fog_renderer = FogRenderer(FOG_COLOR)
 
 # Showing a loading screen
 loading_text, loading_text_rect = font_big.render("Loading...", "white")
@@ -487,6 +523,11 @@ while run:
     if is_fog_on:
         visibility_radius_v = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level
         visibility_radius_h = visibility_radius_v/cos(ship_latitude)
+
+        smooth_fog_texture = fog_renderer.get_fog(visibility_radius_h, visibility_radius_v)
+        smooth_fog_rect = smooth_fog_texture.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
+        screen.blit(smooth_fog_texture, smooth_fog_rect)
+
         ellipse_rect = pg.Rect(0, 0, visibility_radius_h, visibility_radius_v)
         ellipse_rect.center = (ship_position_x_screen, ship_position_y_screen)
         overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
@@ -494,6 +535,7 @@ while run:
         pg.draw.ellipse(overlay, "white", ellipse_rect)
         overlay.set_colorkey("white")
         screen.blit(overlay, (0, 0))
+
 
     # Drawing the sundial if it's shown
     if sundial_shown:
