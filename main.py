@@ -260,7 +260,6 @@ def load_ship_sprites():
     sprites = []
     for i in range(17, 1, -1):
         image = pg.image.load(f"data/ship/ship{i}.png").convert_alpha()
-        scaled_image = pg.transform.smoothscale(image, (16, 16))
         sprites.append(image)
     return sprites
 def load_main_screen_text():
@@ -449,7 +448,7 @@ while run:
     apparent_ship_heading = atan2(new_longitude-ship_longitude, new_latitude-ship_latitude)
 
     if not is_on_land(project_spherical(new_latitude, new_longitude)) and sailing:
-        ship_latitude = new_latitude
+        ship_latitude = max(to_radians(-89), min(to_radians(89), new_latitude)) # avoid singularities at the poles
         ship_longitude = new_longitude
 
     # Checking if the map fills the entire screen and pans it if it doesn't
@@ -480,8 +479,9 @@ while run:
     ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
     ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
     ship_sprite = get_ship_sprite(apparent_ship_heading)
-    render_rect = ship_sprite.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
-    screen.blit(ship_sprite, render_rect)
+    ship_sprite_scaled = pg.transform.smoothscale_by(ship_sprite, zoom_level*0.2)
+    render_rect = ship_sprite_scaled.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
+    screen.blit(ship_sprite_scaled, render_rect)
 
     # Drawing a dark overlay of fog around the ship
     if is_fog_on:
