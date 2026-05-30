@@ -80,7 +80,7 @@ class TimewarpControls:
         for button in self.buttons:
             button.draw()
 
-# Popup with a cancel/continue choice
+# Popup box with customizable action buttons
 class Popup:
     def __init__(self, surface, text, width, theme, btn1_text, btn1_callback, btn2_text, btn2_callback):
         self.surface = surface

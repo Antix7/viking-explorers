@@ -247,6 +247,8 @@ def toggle_fog():
 def disable_fog():
     global is_fog_on
     is_fog_on = False
+def show_exit_popup():
+    exit_popup.shown = True
 
 # Helper functions for loading files
 def load_map():
@@ -360,7 +362,7 @@ raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 ship_sprites = load_ship_sprites()
 
 # Setting up pygame (continued)
-quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, quit_game)
+quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
 toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog)
 buttons = [quit_button, sundial_button, toggle_fog_button]
@@ -370,7 +372,8 @@ toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the 
 toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, "Cancel", lambda:None, "Continue",  disable_fog)
 win_text = "Congratulations! You have set foot on new shores, and your great expedition shall be written into the history books. You can continue playing or exit the game."
 win_popup = ui.Popup(screen, win_text, 500, theme, "Exit", quit_game, "Continue", lambda:None)
-popups = [toggle_fog_popup, win_popup]
+exit_popup = ui.Popup(screen, "Are you sure you want to exit the game?", 500, theme, "Cancel", lambda:None, "Exit", quit_game)
+popups = [toggle_fog_popup, win_popup, exit_popup]
 
 # Game state definitions
 FPS = 60
@@ -613,8 +616,6 @@ while run:
     screen.blit(sun_elevation_text, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 105))
-    fog_text, _ = font_small.render("Fog: " + ("enabled" if is_fog_on else "disabled"), "white")
-    screen.blit(fog_text, (15, 120))
 
     for popup in popups:
         popup.draw()
