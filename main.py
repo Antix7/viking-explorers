@@ -780,6 +780,9 @@ while run:
     arrow_sprite_rotated = pg.transform.rotozoom(wind_arrow_sprite, -to_degrees(wind_heading), 1)
     arrow_sprite_rect = arrow_sprite_rotated.get_rect(center=wind_rose_rect.center)
     screen.blit(arrow_sprite_rotated, arrow_sprite_rect)
+    wind_rose_text, wind_rose_text_rect = font_small.render("Wind direction", "white")
+    wind_rose_text_rect.midbottom = (wind_rose_rect.centerx, wind_rose_rect.top-5)
+    screen.blit(wind_rose_text, wind_rose_text_rect)
 
     for popup in popups:
         popup.draw()
