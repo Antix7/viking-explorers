@@ -220,7 +220,7 @@ def draw_sundial(latitude, longitude, date):
     if date - sun_path_data_cache_date >= timedelta(days=1):
         sun_path_data_cache_date = date
         latitude_rounded = to_radians(round(to_degrees(ship_latitude), -1))  # Rounding to the nearest 10 degrees
-        latitudes = np.arange(latitude_rounded - sundial_range, latitude_rounded + sundial_range, sundial_interval)
+        latitudes = np.arange(latitude_rounded - sundial_range, latitude_rounded + sundial_range+sundial_interval/2, sundial_interval)
         sun_path_data = get_sun_path_data(latitudes, date, SUNDIAL_MIN_ELEVATION)
         sundial_renderer.generate_static_background(sun_path_data)
     elevation, azimuth = get_sun_position(latitude, longitude, date)
@@ -772,7 +772,7 @@ while run:
     screen.blit(sun_elevation_text_rendered, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 105))
-    wind_text, _ = font_small.render(f"Angle to wind: {round(to_degrees(angle_to_wind), 1)}\u00B0", "white")
+    wind_text, _ = font_small.render(f"Angle to wind: {round(180-to_degrees(angle_to_wind), 1)}\u00B0", "white")
     screen.blit(wind_text, (15, 120))
 
     wind_rose_rect = wind_rose_sprite.get_rect(bottomleft=(0, SCREEN_HEIGHT))
