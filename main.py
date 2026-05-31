@@ -250,6 +250,10 @@ def disable_fog():
     is_fog_on = False
 def show_exit_popup():
     exit_popup.shown = True
+def toggle_camera():
+    global is_camera_fixed
+    is_camera_fixed = not is_camera_fixed
+    toggle_camera_button.set_text("Camera: " + ("fixed" if is_camera_fixed else "free"))
 
 # Helper functions for loading files
 def load_map():
@@ -417,7 +421,8 @@ wind_rose_sprite, wind_arrow_sprite = load_wind_rose()
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
 toggle_fog_button = ui.Button(screen, pg.Rect(160, SCREEN_HEIGHT-50, 130, 30), "Toggle fog", theme, toggle_fog)
-buttons = [quit_button, sundial_button, toggle_fog_button]
+toggle_camera_button = ui.Button(screen, pg.Rect(230, 10, 170, 30), "Camera: free", theme, toggle_camera)
+buttons = [quit_button, sundial_button, toggle_fog_button, toggle_camera_button]
 num_timewarp_buttons = 3
 timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
 toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the game incredibly easy. Use this option only if you got completely lost."
@@ -456,6 +461,8 @@ is_fog_on = True
 win = False
 has_won = False # Prevents repeated showing of win screen after pressing "continue"
 wind_heading = wind_randomizer.get_wind_heading()
+is_camera_fixed = False
+sundial_image_width = draw_sundial(ship_latitude, ship_longitude, date).width+20
 
 
 # Setting up the main screen
@@ -547,16 +554,17 @@ while run:
         popup.update(mouse_pos)
 
     # Panning of the map
-    if pg.mouse.get_pressed()[0]:
-        if lmb_held_down:
-            mouse_dx, mouse_dy = pg.mouse.get_rel()
-            camera_x -= mouse_dx / zoom_level
-            camera_y -= mouse_dy / zoom_level
+    if not is_camera_fixed:
+        if pg.mouse.get_pressed()[0]:
+            if lmb_held_down:
+                mouse_dx, mouse_dy = pg.mouse.get_rel()
+                camera_x -= mouse_dx / zoom_level
+                camera_y -= mouse_dy / zoom_level
+            else:
+                lmb_held_down = True
+                pg.mouse.get_rel()
         else:
-            lmb_held_down = True
-            pg.mouse.get_rel()
-    else:
-        lmb_held_down = False
+            lmb_held_down = False
 
     # Ship movement
     ship_speed, angle_to_wind = get_sailing_speed(ship_default_speed, ship_heading, wind_heading)
@@ -567,19 +575,33 @@ while run:
         ship_heading -= ship_turning_velocity * delta_time
     if pressed_keys[pg.K_d]:
         ship_heading += ship_turning_velocity * delta_time
-    # Updating the heading to keep the ship moving along a great circle (using Clairaut's relation)
-    if sailing:
+    if sailing: # Updating the heading to keep the ship moving along a great circle (using Clairaut's relation)
         ship_heading += ship_angular_velocity * sin(ship_heading) * tan(ship_latitude) * delta_time * timewarp
 
     new_latitude = ship_latitude + ship_angular_velocity * cos(ship_heading) * delta_time * timewarp
     new_longitude = ship_longitude + ship_angular_velocity * sin(ship_heading) * delta_time * timewarp / cos(ship_latitude)
-    # Longitude first on purpose, because heading is defined CW and atan2 CCW
-    apparent_ship_heading = atan2(new_longitude-ship_longitude, new_latitude-ship_latitude)
+    apparent_ship_heading = atan2(new_longitude-ship_longitude, new_latitude-ship_latitude) # Longitude first on purpose, because heading is defined CW and atan2 CCW
     is_on_shore = is_on_land(project_spherical(new_latitude, new_longitude))
-
     if not is_on_shore and sailing:
         ship_latitude = max(to_radians(-89), min(to_radians(89), new_latitude)) # avoid singularities at the poles
         ship_longitude = new_longitude
+
+    # Calculating the ship's position for later use
+    ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
+    ship_position_y = MAP_HEIGHT - ship_position_y
+    if not is_camera_fixed:
+        ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
+        ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
+    else:
+        ship_position_y_screen = SCREEN_HEIGHT // 2
+        camera_y = ship_position_y - SCREEN_HEIGHT / (2 * zoom_level)
+        if not sundial_shown:
+            ship_position_x_screen = SCREEN_WIDTH // 2
+            camera_x = ship_position_x - SCREEN_WIDTH / (2 * zoom_level)
+        else:
+            ship_position_x_screen = (SCREEN_WIDTH - sundial_image_width) // 2
+            camera_x = ship_position_x - (SCREEN_WIDTH - sundial_image_width) / (2 * zoom_level)
+
 
     # Checking if the map fills the entire screen and pans it if it doesn't
     camera_x = min(max(camera_x, 0), MAP_WIDTH - SCREEN_WIDTH / zoom_level)
@@ -604,10 +626,6 @@ while run:
     screen.blit(scaled_surface, (offset_x, offset_y))
 
     # Drawing the ship's position
-    ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
-    ship_position_y = MAP_HEIGHT - ship_position_y
-    ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
-    ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
     ship_sprite = get_ship_sprite(ship_heading)
     ship_sprite_scaled = pg.transform.smoothscale_by(ship_sprite, zoom_level*0.2)
     render_rect = ship_sprite_scaled.get_rect(center=(ship_position_x_screen, ship_position_y_screen))

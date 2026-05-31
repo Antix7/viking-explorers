@@ -21,12 +21,17 @@ class Theme:
 class Button:
     def __init__(self, surface, rect, text, theme, callback):
         self.surface = surface
+        self.theme = theme
         self.rect = rect
         self.base_color = theme.btn_base
         self.hover_color = theme.btn_hover
         self.current_color = self.base_color
         self.callback = callback
         self.text_surf, self.text_rect = theme.font.render(text, theme.btn_text)
+        self.text_rect.center = self.rect.center
+
+    def set_text(self, new_text):
+        self.text_surf, self.text_rect = self.theme.font.render(new_text, self.theme.btn_text)
         self.text_rect.center = self.rect.center
 
     def update(self, mouse_pos):
