@@ -47,6 +47,12 @@ def distance_between_points(x1, y1, x2, y2):
 def is_left_of_line(x1, y1, x2, y2, x, y):
     return (x2-x1)*(y-y1)-(y2-y1)*(x-x1) > 0
 
+# Checks whether a point (x, y) is within a rectangle defined by two points
+def is_within_rect(x1, y1, x2, y2, x, y):
+    x1, x2 = min(x1, x2), max(x1, x2)
+    y1, y2 = min(y1, y2), max(y1, y2)
+    return x1 <= x <= x2 and y1 <= y <= y2
+
 # Gives the vector projection of a onto b
 def project_vector(a, b):
     return (np.dot(a, b) / np.dot(b, b)) * b
@@ -372,6 +378,40 @@ def check_winning_condition(x, y, is_on_shore):
     win = win and is_on_shore
     return win
 
+# Checks if the player has reached certain locations and displays a popup
+class LocationTracker:
+    def __init__(self):
+        self.popup = ui.Popup(screen, ".", 500, theme, "", lambda:None,
+                              "Continue", lambda:None, one_button=True)
+        self.locations = []
+        with open("data/locations.csv", "r", encoding="utf-8") as file:
+            for row in file.readlines()[1:]: # skip header
+                split_row = row.split(',')
+                location = {
+                    "name": split_row[0],
+                    "box": tuple(int(x) for x in split_row[1:5]),
+                    "is_inhabited": bool(int(split_row[5])),
+                    "is_visited": False
+                }
+                self.locations.append(location)
+
+    def update(self, x, y, is_on_shore):
+        for location in self.locations:
+            has_reached_location = (is_within_rect(*location["box"], x, y) and
+                                    is_on_shore and
+                                    not location["is_visited"])
+            if has_reached_location:
+                global timewarp_factor
+                timewarp_factor = 0
+                location["is_visited"] = True
+                display_text = f"You have reached {location["name"]}. "
+                if location["is_inhabited"]:
+                    display_text += "Your crew can rest and resupply here, but this is not the final destination."
+                else:
+                    display_text += "This place is not inhabited, and for good reason. Your journey must continue."
+                self.popup.set_text(display_text)
+                self.popup.shown = True
+
 
 # Rounds x to the nearest multiple of m
 def round_to_multiple(x, m):
@@ -454,6 +494,7 @@ sundial_renderer = SundialRenderer(sundial_height)
 fog_renderer = FogRenderer(FOG_COLOR)
 wind_randomizer = WindRandomizer(30, 0.3)
 ship_path_renderer = ShipPathRenderer(2, timedelta(days=20))
+location_tracker = LocationTracker()
 
 
 # Showing a loading screen
@@ -483,7 +524,7 @@ toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, "Cancel", lambd
 win_text = "Congratulations! You have set foot on new shores, and your great expedition shall be written into the history books. You can continue playing or exit the game."
 win_popup = ui.Popup(screen, win_text, 500, theme, "Exit", quit_game, "Continue", lambda:None)
 exit_popup = ui.Popup(screen, "Are you sure you want to exit the game?", 500, theme, "Cancel", lambda:None, "Exit", quit_game)
-popups = [toggle_fog_popup, win_popup, exit_popup]
+popups = [toggle_fog_popup, win_popup, exit_popup, location_tracker.popup]
 
 
 # Game state definitions
@@ -760,6 +801,9 @@ while run:
         has_won = True
         timewarp_factor = 0
         win_popup.shown = True
+
+    # Updating the location tracker
+    location_tracker.update(ship_position_x, ship_position_y, is_on_shore)
 
 
     # Drawing the buttons and on-screen variables

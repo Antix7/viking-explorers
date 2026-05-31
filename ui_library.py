@@ -30,6 +30,10 @@ class Button:
         self.text_surf, self.text_rect = theme.font.render(text, theme.btn_text)
         self.text_rect.center = self.rect.center
 
+    def set_rect(self, new_rect):
+        self.rect = new_rect
+        self.text_rect.center = self.rect.center
+
     def set_text(self, new_text):
         self.text_surf, self.text_rect = self.theme.font.render(new_text, self.theme.btn_text)
         self.text_rect.center = self.rect.center
@@ -87,14 +91,13 @@ class TimewarpControls:
 
 # Popup box with customizable action buttons
 class Popup:
-    def __init__(self, surface, text, width, theme, btn1_text, btn1_callback, btn2_text, btn2_callback):
+    def __init__(self, surface, text, width, theme, btn1_text, btn1_callback, btn2_text, btn2_callback, one_button=False):
         self.surface = surface
         self.theme = theme
-        self.rendered_text = render_wrapped_text(text, theme.font, theme.btn_text, width, theme.line_spacing)
-        text_rect = self.rendered_text.get_rect()
-        self.rect = pg.Rect(0, 0, width+40, text_rect.height+90)
-        self.rect.center = (theme.screen_width//2, theme.screen_height//2)
-        self.shown = False
+        self.width = width
+        self.one_button = one_button
+        self.rendered_text = pg.Surface((0, 0))
+        self.rect = pg.Rect(0, 0, 0, 0)
         def cont():
             self.shown = False
             btn2_callback()
@@ -102,12 +105,28 @@ class Popup:
             self.shown = False
             btn1_callback()
         btn_rect = pg.Rect(0, 0, 100, 30)
-        btn_rect.bottomright = (self.rect.right-20, self.rect.bottom-20)
         continue_button = Button(surface, btn_rect, btn2_text, theme, cont)
+        if not one_button:
+            cancel_button = Button(surface, btn_rect, btn1_text, theme, cancel)
+            self.buttons = [continue_button, cancel_button]
+        else:
+            self.buttons = [continue_button]
+        self.set_text(text)
+        self.shown = False
+
+    def set_text(self, new_text):
+        self.rendered_text = render_wrapped_text(
+            new_text, self.theme.font, self.theme.btn_text, self.width, self.theme.line_spacing)
+        text_rect = self.rendered_text.get_rect()
+        self.rect = pg.Rect(0, 0, self.width + 40, text_rect.height + 90)
+        self.rect.center = (self.theme.screen_width // 2, self.theme.screen_height // 2)
         btn_rect = pg.Rect(0, 0, 100, 30)
-        btn_rect.bottomright = (self.rect.right - 130, self.rect.bottom - 20)
-        cancel_button = Button(surface, btn_rect, btn1_text, theme, cancel)
-        self.buttons = [continue_button, cancel_button]
+        btn_rect.bottomright = (self.rect.right - 20, self.rect.bottom - 20)
+        self.buttons[0].set_rect(btn_rect)
+        if not self.one_button:
+            btn_rect = pg.Rect(0, 0, 100, 30)
+            btn_rect.bottomright = (self.rect.right - 130, self.rect.bottom - 20)
+            self.buttons[1].set_rect(btn_rect)
 
     def update(self, mouse_pos):
         if self.shown:
@@ -144,10 +163,13 @@ def render_wrapped_text(text, font, color, max_width, line_spacing):
     if current_line:
         lines.append(' '.join(current_line))
     rendered_lines = [font.render(line, color)[0] for line in lines]
-    line_height = rendered_lines[0].get_rect().height + line_spacing
+    max_line_height = max(l.get_rect().height for l in rendered_lines)
+    line_height = max_line_height + line_spacing
     total_height = line_height * len(rendered_lines)
     total_width = max(surf.get_width() for surf in rendered_lines)
     result = pg.Surface((total_width, total_height), pg.SRCALPHA)
+    c = pg.Color(color)
+    result.fill((c.r, c.g, c.b, 0))
     for i, line_surf in enumerate(rendered_lines):
         result.blit(line_surf, (0, i * line_height))
     return result
