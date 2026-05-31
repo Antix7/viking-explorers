@@ -452,8 +452,8 @@ theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_CO
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
 fog_renderer = FogRenderer(FOG_COLOR)
-wind_randomizer = WindRandomizer(20, 0.3)
-ship_path_renderer = ShipPathRenderer(2, timedelta(days=5))
+wind_randomizer = WindRandomizer(30, 0.3)
+ship_path_renderer = ShipPathRenderer(2, timedelta(days=20))
 
 
 # Showing a loading screen
@@ -474,7 +474,7 @@ wind_rose_sprite, wind_arrow_sprite = load_wind_rose()
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
 toggle_fog_button = ui.Button(screen, pg.Rect(160, SCREEN_HEIGHT-50, 130, 30), "Toggle fog", theme, toggle_fog)
-toggle_camera_button = ui.Button(screen, pg.Rect(230, 10, 170, 30), "Camera: free", theme, toggle_camera)
+toggle_camera_button = ui.Button(screen, pg.Rect(230, 10, 170, 30), "Camera: fixed", theme, toggle_camera)
 buttons = [quit_button, sundial_button, toggle_fog_button, toggle_camera_button]
 num_timewarp_buttons = 3
 timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
@@ -493,17 +493,17 @@ MIN_ZOOM = 0.5
 zoom_level = 4.0 # current zoom level
 zoom_factor = 1.2 # by how much the zoom level changes with each scroll
 timewarp_factor = 0
-timewarp_multiplier = 20 # by how much each level of timewarp speeds up the game
+timewarp_multiplier = 16 # by how much each level of timewarp speeds up the game
 timewarp = 1
-ship_latitude = to_radians(59)
-ship_longitude = to_radians(5)
+ship_latitude = to_radians(58.8)
+ship_longitude = to_radians(9.8)
 camera_x = project_spherical(ship_latitude, ship_longitude)[0] - SCREEN_WIDTH/(2*zoom_level)
 camera_y = MAP_HEIGHT - project_spherical(ship_latitude, ship_longitude)[1] - SCREEN_HEIGHT/(2*zoom_level)
 lmb_held_down = False
 sailing = True
-ship_default_speed = 6 #[m/s] (very fast ship)
-ship_turning_velocity = 2 #[rad/s]
-ship_heading = 0
+ship_default_speed = 5 #[m/s] (quite fast ship)
+ship_turning_velocity = 2.5 #[rad/s]
+ship_heading = to_radians(200)
 wind_heading = wind_randomizer.get_wind_heading()
 horizon_distance = 150 #[km] (exaggerated for gameplay purposes)
 date = datetime(900, 5, 1, 16, 0, 0)
@@ -513,7 +513,7 @@ sundial_interval = to_radians(4) #[rad] interval between sun lines
 sun_path_data_cache_date = datetime(1, 1, 1)
 sundial_image_width = draw_sundial(ship_latitude, ship_longitude, date).width+40
 is_fog_on = True
-is_camera_fixed = False
+is_camera_fixed = True
 win = False
 has_won = False # Prevents repeated showing of win screen after pressing "continue"
 
