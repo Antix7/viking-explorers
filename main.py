@@ -1,5 +1,6 @@
 from math import *
 from datetime import datetime, timedelta
+from random import random
 import numpy as np
 import matplotlib
 matplotlib.use("Agg") # Force headless mode for matplotlib, for sundial rendering performance
@@ -267,6 +268,12 @@ def load_ship_sprites():
         image = pg.image.load(f"data/ship/ship{i}.png").convert_alpha()
         sprites.append(image)
     return sprites
+def load_wind_rose():
+    wind_rose_img = pg.image.load(f"data/wind_rose.png").convert_alpha()
+    wind_rose_scaled = pg.transform.smoothscale(wind_rose_img, (150, 150))
+    arrow_img = pg.image.load(f"data/wind_arrow.png").convert_alpha()
+    arrow_scaled = pg.transform.smoothscale(arrow_img, (60, 60))
+    return wind_rose_scaled, arrow_scaled
 def load_main_screen_text():
     with open("data/main_screen_text.txt", encoding="utf-8") as file:
         return file.read().strip('\n')
@@ -289,13 +296,16 @@ def get_ship_sprite(heading):
 def round_to_multiple(x, m):
     return m * round(x / m)
 
+sine_ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # Smooth transition between 0 and 1
+random_with_negative = lambda: random()*2 - 1
+
 # An optimized fog renderer that caches textures for performance
 class FogRenderer:
     def __init__(self, color):
         self.color = color
         self.cache = {}
         self.max_cache_size = 100
-        self.ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # ease-in ease-out sine
+        self.ease = sine_ease
 
     def draw_fog(self, width, height, fog_start_frac=0.5, steps=50):
         margin = 10
@@ -334,6 +344,36 @@ def check_winning_condition(x, y, is_on_shore):
     win = win and is_on_shore
     return win
 
+# Generates random wind headings and smoothly transitions between them
+class WindRandomizer:
+    def __init__(self, time_between_changes, variability):
+        self.wind_heading = random()*2*pi # where the wind blows to
+        self.time_between_changes = time_between_changes #[s]
+        self.variability = variability # by how much the time between changes varies, percentage-wise
+        self.ease = sine_ease
+        self.current_interval = 1
+        self.position_along_curve = 1.1 # forces immediate update
+        self.curve_points = [0, self.wind_heading]
+
+    def tick(self, dt):
+        self.position_along_curve += dt/self.current_interval
+        if self.position_along_curve > 1:
+            self.position_along_curve = 0
+            self.current_interval = self.time_between_changes * (1 + self.variability * random_with_negative())
+            current_heading = self.curve_points[1]
+            next_heading = random()*2*pi
+            if current_heading - next_heading > pi:
+                current_heading -= 2*pi
+            elif next_heading - current_heading > pi:
+                current_heading += 2*pi
+            self.curve_points = [current_heading, next_heading]
+        self.wind_heading = self.curve_points[0] + self.ease(self.position_along_curve) * (self.curve_points[1] - self.curve_points[0])
+        self.wind_heading = self.wind_heading % (2 * pi)
+
+    def get_wind_heading(self):
+        return self.wind_heading
+
+
 # Setting up pygame
 pg.init()
 pg.display.set_icon(pg.image.load("data/icon.ico"))
@@ -349,6 +389,7 @@ theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_CO
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
 fog_renderer = FogRenderer(FOG_COLOR)
+wind_randomizer = WindRandomizer(10, 0.3)
 
 # Showing a loading screen
 loading_text, loading_text_rect = font_big.render("Loading...", "white")
@@ -360,12 +401,13 @@ pg.display.flip()
 # Loading data
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 ship_sprites = load_ship_sprites()
+wind_rose_sprite, wind_arrow_sprite = load_wind_rose()
 
 # Setting up pygame (continued)
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
 toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog)
-buttons = [quit_button, sundial_button, toggle_fog_button]
+buttons = [quit_button, sundial_button]#, toggle_fog_button]
 num_timewarp_buttons = 3
 timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
 toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the game incredibly easy. Use this option only if you got completely lost."
@@ -404,6 +446,7 @@ main_screen_shown = True
 is_fog_on = True
 win = False
 has_won = False # Prevents repeated showing of win screen after pressing "continue"
+wind_heading = wind_randomizer.get_wind_heading()
 
 
 # Setting up the main screen
@@ -439,10 +482,12 @@ while main_screen_shown:
 run = True
 while run:
 
-    # Updating time
+    # Updating time and wind
     delta_time = clock.tick(FPS) / 1000
     date += timedelta(seconds=delta_time*timewarp)
     timewarp = timewarp_multiplier**(timewarp_factor+1) # Lowest timewarp is faster than real-time
+    wind_randomizer.tick(delta_time) # Keeps the wind changing at real speed
+    wind_heading = wind_randomizer.get_wind_heading()
     mouse_pos = pg.mouse.get_pos()
 
     # Looping over all events and handling them
@@ -617,6 +662,12 @@ while run:
     screen.blit(sun_elevation_text, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 105))
+
+    wind_rose_rect = wind_rose_sprite.get_rect(bottomleft=(0, SCREEN_HEIGHT))
+    screen.blit(wind_rose_sprite, wind_rose_rect)
+    arrow_sprite_rotated = pg.transform.rotozoom(wind_arrow_sprite, -to_degrees(wind_heading), 1)
+    arrow_sprite_rect = arrow_sprite_rotated.get_rect(center=wind_rose_rect.center)
+    screen.blit(arrow_sprite_rotated, arrow_sprite_rect)
 
     for popup in popups:
         popup.draw()
