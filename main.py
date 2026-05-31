@@ -20,6 +20,7 @@ def hex_to_rgb(hex_color):
     hex_color = hex_color.lstrip('#')
     return [int(hex_color[i:i+2], 16) for i in (0, 2, 4)]
 
+
 # Constants
 EARTH_RADIUS = 6371 #[km]
 MAP_SCALE = 60*(180/pi) #[px/rad]
@@ -38,20 +39,13 @@ POPUP_BG_COLOR = pg.Color("#dddddd")
 SUNDIAL_BG_COLOR = pg.Color("#fffcf7")
 SHIP_PATH_COLOR = pg.Color("#AD1B28")
 
-# Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
-def get_earth_rotation_matrix(earth_rotation_angle):
-    return np.array([
-        [cos(earth_rotation_angle), sin(earth_rotation_angle), 0],
-        [-sin(earth_rotation_angle), cos(earth_rotation_angle), 0],
-        [0, 0, 1]
-    ]).T
 
-# Rotates a vector by 90 degrees downwards in the plane containing the vector and the z-axis
-def rotate_down(vector):
-    r = sqrt(vector[0] ** 2 + vector[1] ** 2)
-    if r == 0:  # Vector pointing straight up
-        return np.array([1, 0, 0])
-    return np.array([vector[0] * vector[2] / r, vector[1] * vector[2] / r, -r])
+def distance_between_points(x1, y1, x2, y2):
+    return sqrt((x1 - x2)**2 + (y1 - y2)**2)
+
+# Checks whether a point (x, y) is on the left side of the line defined by two points
+def is_left_of_line(x1, y1, x2, y2, x, y):
+    return (x2-x1)*(y-y1)-(y2-y1)*(x-x1) > 0
 
 # Gives the vector projection of a onto b
 def project_vector(a, b):
@@ -60,8 +54,20 @@ def project_vector(a, b):
 def angle_between_vectors(a, b):
     return acos(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
-def distance_between_points(x1, y1, x2, y2):
-    return sqrt((x1 - x2)**2 + (y1 - y2)**2)
+# Rotates a vector by 90 degrees downwards in the plane containing the vector and the z-axis
+def rotate_down(vector):
+    r = sqrt(vector[0] ** 2 + vector[1] ** 2)
+    if r == 0:  # Vector pointing straight up
+        return np.array([1, 0, 0])
+    return np.array([vector[0] * vector[2] / r, vector[1] * vector[2] / r, -r])
+
+# Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
+def get_earth_rotation_matrix(earth_rotation_angle):
+    return np.array([
+        [cos(earth_rotation_angle), sin(earth_rotation_angle), 0],
+        [-sin(earth_rotation_angle), cos(earth_rotation_angle), 0],
+        [0, 0, 1]
+    ]).T
 
 # Calculates the apparent position of the sun in the sky for a given location and time
 def get_sun_position(latitude, longitude, date):
@@ -220,6 +226,118 @@ def draw_sundial(latitude, longitude, date):
     elevation, azimuth = get_sun_position(latitude, longitude, date)
     return sundial_renderer.get_sundial_image(elevation, azimuth)
 
+# An optimized fog renderer that caches textures for performance
+class FogRenderer:
+    def __init__(self, color):
+        self.color = color
+        self.cache = {}
+        self.max_cache_size = 100
+        self.ease = sine_ease
+
+    def draw_fog(self, width, height, fog_start_frac=0.5, steps=50):
+        margin = 10
+        surface = pg.Surface((width+2*margin, height+2*margin), pg.SRCALPHA)
+        pg.draw.ellipse(surface, self.color, pg.Rect((0, 0), (width+2*margin, height+2*margin)))
+        for i in range(steps, int(fog_start_frac*steps), -1):
+            ellipse_ratio = i/steps
+            alpha_ratio = (ellipse_ratio - fog_start_frac)/(1 - fog_start_frac)
+            rect = pg.Rect(0, 0, width*ellipse_ratio, height*ellipse_ratio)
+            rect.center = (width/2+margin, height/2+margin)
+            alpha = int(255*self.ease(alpha_ratio))
+            pg.draw.ellipse(surface, (*self.color, alpha), rect)
+        surface_blurred = pg.transform.box_blur(surface, margin//2)
+        return surface_blurred
+
+    def get_fog(self, width, height):
+        caching_threshold = 5 #[px]
+        width = round_to_multiple(width, caching_threshold)
+        height = round_to_multiple(height, caching_threshold)
+        if (width, height) in self.cache.keys():
+            return self.cache[(width, height)]
+        fog_surface = self.draw_fog(width, height)
+        if len(self.cache) > self.max_cache_size: # Clearing the cache
+            self.cache = {}
+        self.cache[(width, height)] = fog_surface
+        return fog_surface
+
+# Records points in equal distance intervals and draws them as a dashed line
+class ShipPathRenderer:
+    class Point:
+        def __init__(self, x, y, created, is_start):
+            self.x = x
+            self.y = y
+            self.created = created
+            self.is_start = is_start
+
+        def to_screenspace(self, camera_x, camera_y, zoom_level):
+            screen_x = (self.x - camera_x) * zoom_level
+            screen_y = (self.y - camera_y) * zoom_level
+            return screen_x, screen_y
+
+    def __init__(self, record_distance, persist_time):
+        self.points = []
+        self.record_distance = record_distance
+        self.persist_time = persist_time
+
+    def update(self, ship_x, ship_y, date):
+        if len(self.points) == 0:
+            self.points.append(self.Point(ship_x, ship_y, date, True))
+            return
+        if distance_between_points(self.points[-1].x, self.points[-1].y, ship_x, ship_y) >= self.record_distance:
+            self.points.append(self.Point(ship_x, ship_y, date, not self.points[-1].is_start))
+        if date - self.points[0].created > self.persist_time:
+            self.points = self.points[1:]
+
+    def draw(self, surface, camera_x, camera_y, zoom_level):
+        start = 0 if self.points[0].is_start else 1
+        start_pos = (0, 0)
+        end_pos = (0, 0) # to avoid unexpected crashes
+        for point in self.points[start:]:
+            if point.is_start:
+                start_pos = point.to_screenspace(camera_x, camera_y, zoom_level)
+            else:
+                end_pos = point.to_screenspace(camera_x, camera_y, zoom_level)
+                pg.draw.line(surface, SHIP_PATH_COLOR, start_pos, end_pos, 2)
+
+# Generates random wind headings and smoothly transitions between them
+class WindRandomizer:
+    def __init__(self, time_between_changes, variability):
+        self.wind_heading = random()*2*pi # where the wind blows to
+        self.time_between_changes = time_between_changes #[s]
+        self.variability = variability # by how much the time between changes varies, percentage-wise
+        self.ease = sine_ease
+        self.current_interval = 1
+        self.position_along_curve = 1.1 # forces immediate update
+        self.curve_points = [0, self.wind_heading]
+
+    def tick(self, dt):
+        self.position_along_curve += dt/self.current_interval
+        if self.position_along_curve > 1:
+            self.position_along_curve = 0
+            self.current_interval = self.time_between_changes * (1 + self.variability * random_with_negative())
+            current_heading = self.curve_points[1]
+            next_heading = random()*2*pi
+            if current_heading - next_heading > pi:
+                current_heading -= 2*pi
+            elif next_heading - current_heading > pi:
+                current_heading += 2*pi
+            self.curve_points = [current_heading, next_heading]
+        self.wind_heading = self.curve_points[0] + self.ease(self.position_along_curve) * (self.curve_points[1] - self.curve_points[0])
+        self.wind_heading = self.wind_heading % (2 * pi)
+
+    def get_wind_heading(self):
+        return self.wind_heading
+
+# Gives the speed of the ship, taking into account the direction of the wind
+def get_sailing_speed(default_speed, ship_heading, wind_heading):
+    ship_heading = ship_heading % (2*pi)
+    wind_heading = wind_heading % (2*pi)
+    angle_diff = abs(ship_heading - wind_heading)
+    x = min(angle_diff, 2*pi - angle_diff) # angle to the wind
+    # This formula approximates the speed vs AoA distribution of a real sailboat
+    modifier = cos(0.3*x**2 + 0.5*x - 1.4) + 0.8
+    return default_speed * modifier, x
+
 # Calculates the position of a point on a sphere in the equirectangular projection
 def project_spherical(latitude, longitude):
     longitude = (longitude+pi)%(2*pi) - pi
@@ -227,11 +345,41 @@ def project_spherical(latitude, longitude):
     y = MAP_SCALE * (latitude-MAP_LAT_START)
     return x, y
 
+# Checks whether a given position is a land tile
+def is_on_land(position_tuple):
+    x, y = position_tuple
+    x = int(x)
+    y = int(MAP_HEIGHT - y)
+    if 0 <= x < MAP_WIDTH and 0 <= y < MAP_HEIGHT:
+        return raw_map[y][x]
+    return 1
+
 # Checks if the map would cover the entire screen after a zoom-out
 def is_zoom_out_allowed(zoom_level):
     scaled_map_width = MAP_WIDTH * zoom_level / zoom_factor
     scaled_map_height = MAP_HEIGHT * zoom_level / zoom_factor
     return scaled_map_width >= SCREEN_WIDTH and scaled_map_height >= SCREEN_HEIGHT
+
+# Returns a ship sprite that matches given heading the closest
+def get_ship_sprite(heading):
+    sprite_id = round((heading*16)/(2*pi))%16
+    return ship_sprites[sprite_id]
+
+# Checks if the player has sailed past Iceland and reached a shoreline
+def check_winning_condition(x, y, is_on_shore):
+    win = is_left_of_line(11700, 0, 7600, 2300, x, y)
+    win = win or is_left_of_line(8900, 0, 7800, 3200, x, y)
+    win = win and is_on_shore
+    return win
+
+
+# Rounds x to the nearest multiple of m
+def round_to_multiple(x, m):
+    return m * round(x / m)
+
+# Small helper functions
+sine_ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # Smooth transition between 0 and 1
+random_with_negative = lambda: random()*2 - 1
 
 # Callback functions for buttons
 def quit_game():
@@ -241,8 +389,8 @@ def start_game():
     global main_screen_shown
     main_screen_shown = False
 def show_sundial():
-    global sundial_shown
-    sundial_shown = not sundial_shown
+    global is_sundial_shown
+    is_sundial_shown = not is_sundial_shown
 def toggle_fog():
     global is_fog_on
     if is_fog_on:
@@ -286,149 +434,6 @@ def load_main_screen_text():
     with open("data/main_screen_text.txt", encoding="utf-8") as file:
         return file.read().strip('\n')
 
-# Checks whether a given position is a land tile
-def is_on_land(position_tuple):
-    x, y = position_tuple
-    x = int(x)
-    y = int(MAP_HEIGHT - y)
-    if 0 <= x < MAP_WIDTH and 0 <= y < MAP_HEIGHT:
-        return raw_map[y][x]
-    return 1
-
-# Returns a ship sprite that matches given heading the closest
-def get_ship_sprite(heading):
-    sprite_id = round((heading*16)/(2*pi))%16
-    return ship_sprites[sprite_id]
-
-# Rounds x to the nearest multiple of m
-def round_to_multiple(x, m):
-    return m * round(x / m)
-
-sine_ease = lambda x: 0.5*(sin(pi*(x-0.5))+1) # Smooth transition between 0 and 1
-random_with_negative = lambda: random()*2 - 1
-
-# An optimized fog renderer that caches textures for performance
-class FogRenderer:
-    def __init__(self, color):
-        self.color = color
-        self.cache = {}
-        self.max_cache_size = 100
-        self.ease = sine_ease
-
-    def draw_fog(self, width, height, fog_start_frac=0.5, steps=50):
-        margin = 10
-        surface = pg.Surface((width+2*margin, height+2*margin), pg.SRCALPHA)
-        pg.draw.ellipse(surface, self.color, pg.Rect((0, 0), (width+2*margin, height+2*margin)))
-        for i in range(steps, int(fog_start_frac*steps), -1):
-            ellipse_ratio = i/steps
-            alpha_ratio = (ellipse_ratio - fog_start_frac)/(1 - fog_start_frac)
-            rect = pg.Rect(0, 0, width*ellipse_ratio, height*ellipse_ratio)
-            rect.center = (width/2+margin, height/2+margin)
-            alpha = int(255*self.ease(alpha_ratio))
-            pg.draw.ellipse(surface, (*self.color, alpha), rect)
-        surface_blurred = pg.transform.box_blur(surface, margin//2)
-        return surface_blurred
-
-    def get_fog(self, width, height):
-        caching_threshold = 5 #[px]
-        width = round_to_multiple(width, caching_threshold)
-        height = round_to_multiple(height, caching_threshold)
-        if (width, height) in self.cache.keys():
-            return self.cache[(width, height)]
-        fog_surface = self.draw_fog(width, height)
-        if len(self.cache) > self.max_cache_size: # Clearing the cache
-            self.cache = {}
-        self.cache[(width, height)] = fog_surface
-        return fog_surface
-
-# Checks whether a point (x, y) is on the left side of the line defined by two points
-def is_left_of_line(x1, y1, x2, y2, x, y):
-    return (x2-x1)*(y-y1)-(y2-y1)*(x-x1) > 0
-
-# Checks if the player has sailed past Iceland and reached a shoreline
-def check_winning_condition(x, y, is_on_shore):
-    win = is_left_of_line(11700, 0, 7600, 2300, x, y)
-    win = win or is_left_of_line(8900, 0, 7800, 3200, x, y)
-    win = win and is_on_shore
-    return win
-
-# Generates random wind headings and smoothly transitions between them
-class WindRandomizer:
-    def __init__(self, time_between_changes, variability):
-        self.wind_heading = random()*2*pi # where the wind blows to
-        self.time_between_changes = time_between_changes #[s]
-        self.variability = variability # by how much the time between changes varies, percentage-wise
-        self.ease = sine_ease
-        self.current_interval = 1
-        self.position_along_curve = 1.1 # forces immediate update
-        self.curve_points = [0, self.wind_heading]
-
-    def tick(self, dt):
-        self.position_along_curve += dt/self.current_interval
-        if self.position_along_curve > 1:
-            self.position_along_curve = 0
-            self.current_interval = self.time_between_changes * (1 + self.variability * random_with_negative())
-            current_heading = self.curve_points[1]
-            next_heading = random()*2*pi
-            if current_heading - next_heading > pi:
-                current_heading -= 2*pi
-            elif next_heading - current_heading > pi:
-                current_heading += 2*pi
-            self.curve_points = [current_heading, next_heading]
-        self.wind_heading = self.curve_points[0] + self.ease(self.position_along_curve) * (self.curve_points[1] - self.curve_points[0])
-        self.wind_heading = self.wind_heading % (2 * pi)
-
-    def get_wind_heading(self):
-        return self.wind_heading
-
-# Gives the speed of the ship, taking into account the direction of the wind
-def get_sailing_speed(default_speed, ship_heading, wind_heading):
-    ship_heading = ship_heading % (2*pi)
-    wind_heading = wind_heading % (2*pi)
-    angle_diff = abs(ship_heading - wind_heading)
-    x = min(angle_diff, 2*pi - angle_diff) # angle to the wind
-    # This formula approximates the speed vs AoA distribution of a real sailboat
-    modifier = cos(0.3*x**2 + 0.5*x - 1.4) + 0.8
-    return default_speed * modifier, x
-
-class ShipPathRenderer:
-    class Point:
-        def __init__(self, x, y, created, is_start):
-            self.x = x
-            self.y = y
-            self.created = created
-            self.is_start = is_start
-
-        def to_screenspace(self, camera_x, camera_y, zoom_level):
-            screen_x = (self.x - camera_x) * zoom_level
-            screen_y = (self.y - camera_y) * zoom_level
-            return screen_x, screen_y
-
-    def __init__(self, record_distance, persist_time):
-        self.points = []
-        self.record_distance = record_distance
-        self.persist_time = persist_time
-
-    def update(self, ship_x, ship_y, date):
-        if len(self.points) == 0:
-            self.points.append(self.Point(ship_x, ship_y, date, True))
-            return
-        if distance_between_points(self.points[-1].x, self.points[-1].y, ship_x, ship_y) >= self.record_distance:
-            self.points.append(self.Point(ship_x, ship_y, date, not self.points[-1].is_start))
-        if date - self.points[0].created > self.persist_time:
-            self.points = self.points[1:]
-
-    def draw(self, surface, camera_x, camera_y, zoom_level):
-        start = 0 if self.points[0].is_start else 1
-        start_pos = (0, 0)
-        end_pos = (0, 0) # to avoid unexpected crashes
-        for point in self.points[start:]:
-            if point.is_start:
-                start_pos = point.to_screenspace(camera_x, camera_y, zoom_level)
-            else:
-                end_pos = point.to_screenspace(camera_x, camera_y, zoom_level)
-                pg.draw.line(surface, SHIP_PATH_COLOR, start_pos, end_pos, 2)
-
 
 # Setting up pygame
 pg.init()
@@ -437,16 +442,19 @@ pg.display.set_caption("Viking Explorers")
 screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
 SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
+
 clock = pg.time.Clock()
 font_small = ft.Font("data/Inter-Regular.ttf", 12)
 font = ft.Font("data/Inter-Regular.ttf", 20)
 font_big = ft.Font("data/Inter-Regular.ttf", 40)
 theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2)
+
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
 fog_renderer = FogRenderer(FOG_COLOR)
 wind_randomizer = WindRandomizer(20, 0.3)
 ship_path_renderer = ShipPathRenderer(2, timedelta(days=5))
+
 
 # Showing a loading screen
 loading_text, loading_text_rect = font_big.render("Loading...", "white")
@@ -455,10 +463,12 @@ loading_text_rect.center=(SCREEN_WIDTH/2, SCREEN_HEIGHT*0.45)
 screen.blit(loading_text, loading_text_rect)
 pg.display.flip()
 
+
 # Loading data
 raw_map, map_surface, MAP_WIDTH, MAP_HEIGHT = load_map()
 ship_sprites = load_ship_sprites()
 wind_rose_sprite, wind_arrow_sprite = load_wind_rose()
+
 
 # Setting up pygame (continued)
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
@@ -475,38 +485,37 @@ win_popup = ui.Popup(screen, win_text, 500, theme, "Exit", quit_game, "Continue"
 exit_popup = ui.Popup(screen, "Are you sure you want to exit the game?", 500, theme, "Cancel", lambda:None, "Exit", quit_game)
 popups = [toggle_fog_popup, win_popup, exit_popup]
 
+
 # Game state definitions
 FPS = 60
 MAX_ZOOM = 8.0
 MIN_ZOOM = 0.5
 zoom_level = 4.0 # current zoom level
 zoom_factor = 1.2 # by how much the zoom level changes with each scroll
+timewarp_factor = 0
+timewarp_multiplier = 20 # by how much each level of timewarp speeds up the game
+timewarp = 1
 ship_latitude = to_radians(59)
 ship_longitude = to_radians(5)
 camera_x = project_spherical(ship_latitude, ship_longitude)[0] - SCREEN_WIDTH/(2*zoom_level)
 camera_y = MAP_HEIGHT - project_spherical(ship_latitude, ship_longitude)[1] - SCREEN_HEIGHT/(2*zoom_level)
 lmb_held_down = False
-ship_default_speed = 6 #[m/s] (very fast ship)
 sailing = True
+ship_default_speed = 6 #[m/s] (very fast ship)
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
+wind_heading = wind_randomizer.get_wind_heading()
 horizon_distance = 150 #[km] (exaggerated for gameplay purposes)
 date = datetime(900, 5, 1, 16, 0, 0)
-sundial_shown = False
+is_sundial_shown = False
 sundial_range = to_radians(10) #[rad] 10 degrees up and down
 sundial_interval = to_radians(4) #[rad] interval between sun lines
 sun_path_data_cache_date = datetime(1, 1, 1)
-timewarp_factor = 0
-timewarp_multiplier = 20 # by how much each level of timewarp speeds up the game
-timewarp = 1
-main_screen_shown = True
+sundial_image_width = draw_sundial(ship_latitude, ship_longitude, date).width+40
 is_fog_on = True
+is_camera_fixed = False
 win = False
 has_won = False # Prevents repeated showing of win screen after pressing "continue"
-wind_heading = wind_randomizer.get_wind_heading()
-is_camera_fixed = False
-sundial_image_width = draw_sundial(ship_latitude, ship_longitude, date).width+40
-
 
 
 # Setting up the main screen
@@ -521,6 +530,7 @@ else:
 continue_button_pos = [ms_text_rect.right-150, min(ms_text_rect.bottom+10, SCREEN_HEIGHT-50)]
 continue_button = ui.Button(screen, pg.Rect(continue_button_pos, (150, 40)), "Start game!", theme, start_game)
 
+main_screen_shown = True
 while main_screen_shown:
     clock.tick(FPS)
     mouse_pos = pg.mouse.get_pos()
@@ -531,6 +541,7 @@ while main_screen_shown:
                 ms_text_rect.top = min(ms_text_rect.top+20, 10)
             elif event.y < 0:
                 ms_text_rect.bottom = max(ms_text_rect.bottom-20, SCREEN_HEIGHT-80)
+
     continue_button.update(mouse_pos)
     screen.fill(FOG_COLOR)
     screen.blit(ms_text_rendered, ms_text_rect)
@@ -549,6 +560,7 @@ while run:
     wind_randomizer.tick(delta_time * 2**timewarp_factor) # Wind changes slower than timewarp for playability
     wind_heading = wind_randomizer.get_wind_heading()
     mouse_pos = pg.mouse.get_pos()
+
 
     # Looping over all events and handling them
     for event in pg.event.get():
@@ -590,12 +602,14 @@ while run:
             if event.key == pg.K_RIGHT:
                 timewarp_factor = min(timewarp_factor+1, num_timewarp_buttons-1)
 
+
     # Handling button hover
     for button in buttons:
         button.update(mouse_pos)
     timewarp_controls.update(timewarp_factor=timewarp_factor)
     for popup in popups:
         popup.update(mouse_pos)
+
 
     # Panning of the map
     if not is_camera_fixed:
@@ -609,6 +623,7 @@ while run:
                 pg.mouse.get_rel()
         else:
             lmb_held_down = False
+
 
     # Ship movement
     ship_speed, angle_to_wind = get_sailing_speed(ship_default_speed, ship_heading, wind_heading)
@@ -630,6 +645,7 @@ while run:
         ship_latitude = max(to_radians(-89), min(to_radians(89), new_latitude)) # avoid singularities at the poles
         ship_longitude = new_longitude
 
+
     # Calculating the ship's position for later use
     ship_position_x, ship_position_y = project_spherical(ship_latitude, ship_longitude)
     ship_position_y = MAP_HEIGHT - ship_position_y
@@ -639,7 +655,7 @@ while run:
     else:
         ship_position_y_screen = SCREEN_HEIGHT // 2
         camera_y = ship_position_y - SCREEN_HEIGHT / (2 * zoom_level)
-        if not sundial_shown:
+        if not is_sundial_shown:
             ship_position_x_screen = SCREEN_WIDTH // 2
             camera_x = ship_position_x - SCREEN_WIDTH / (2 * zoom_level)
         else:
@@ -650,6 +666,7 @@ while run:
     # Checking if the map fills the entire screen and pans it if it doesn't
     camera_x = min(max(camera_x, 0), MAP_WIDTH - SCREEN_WIDTH / zoom_level)
     camera_y = min(max(camera_y, 0), MAP_HEIGHT - SCREEN_HEIGHT / zoom_level)
+
 
     # Drawing the map onto the screen
     crop_rect_x = int(camera_x)
@@ -669,9 +686,11 @@ while run:
     screen.fill((0, 0, 0))
     screen.blit(scaled_surface, (offset_x, offset_y))
 
+
     # Drawing the ship path, before the ship itself
     ship_path_renderer.update(ship_position_x, ship_position_y, date)
     ship_path_renderer.draw(screen, camera_x, camera_y, zoom_level)
+
 
     # Drawing the ship's position
     ship_sprite = get_ship_sprite(ship_heading)
@@ -679,6 +698,7 @@ while run:
     render_rect = ship_sprite_scaled.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
     render_rect.y -= render_rect.height*0.1
     screen.blit(ship_sprite_scaled, render_rect)
+
 
     # Getting sun information for later use
     sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
@@ -691,6 +711,7 @@ while run:
         darkening_alpha = round(max_darkening_alpha * sine_ease(fraction))
     elif sun_elevation < 10:
         darkening_alpha = max_darkening_alpha
+
 
     # Drawing a dark overlay of fog around the ship
     if is_fog_on:
@@ -713,7 +734,7 @@ while run:
 
 
     # Drawing the sundial if it's shown
-    if sundial_shown:
+    if is_sundial_shown:
         sundial_image = draw_sundial(ship_latitude, ship_longitude, date)
         sundial_width, sundial_height = sundial_image.size
         sundial_rect = sundial_image.get_rect()
@@ -732,12 +753,14 @@ while run:
             pg.draw.rect(tmp, (*FOG_COLOR, darkening_alpha), [0, 0, bg_rect.width, bg_rect.height])
             screen.blit(tmp, bg_rect)
 
+
     # Checking for win condition
     win = check_winning_condition(ship_position_x, ship_position_y, is_on_shore)
     if win and not has_won:
         has_won = True
         timewarp_factor = 0
         win_popup.shown = True
+
 
     # Drawing the buttons and on-screen variables
     for button in buttons:
@@ -764,3 +787,4 @@ while run:
     pg.display.flip()
 
 pg.quit()
+
