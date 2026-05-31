@@ -36,6 +36,7 @@ BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
 BUTTON_HOVER_COLOR = pg.Color("#777777")
 POPUP_BG_COLOR = pg.Color("#dddddd")
 SUNDIAL_BG_COLOR = pg.Color("#fffcf7")
+SHIP_PATH_COLOR = pg.Color("#AD1B28")
 
 # Gives the transformation matrix of a rotation about the Earth's rotation axis, West to East
 def get_earth_rotation_matrix(earth_rotation_angle):
@@ -58,6 +59,9 @@ def project_vector(a, b):
 
 def angle_between_vectors(a, b):
     return acos(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+
+def distance_between_points(x1, y1, x2, y2):
+    return sqrt((x1 - x2)**2 + (y1 - y2)**2)
 
 # Calculates the apparent position of the sun in the sky for a given location and time
 def get_sun_position(latitude, longitude, date):
@@ -387,6 +391,44 @@ def get_sailing_speed(default_speed, ship_heading, wind_heading):
     modifier = cos(0.3*x**2 + 0.5*x - 1.4) + 0.8
     return default_speed * modifier, x
 
+class ShipPathRenderer:
+    class Point:
+        def __init__(self, x, y, created, is_start):
+            self.x = x
+            self.y = y
+            self.created = created
+            self.is_start = is_start
+
+        def to_screenspace(self, camera_x, camera_y, zoom_level):
+            screen_x = (self.x - camera_x) * zoom_level
+            screen_y = (self.y - camera_y) * zoom_level
+            return screen_x, screen_y
+
+    def __init__(self, record_distance, persist_time):
+        self.points = []
+        self.record_distance = record_distance
+        self.persist_time = persist_time
+
+    def update(self, ship_x, ship_y, date):
+        if len(self.points) == 0:
+            self.points.append(self.Point(ship_x, ship_y, date, True))
+            return
+        if distance_between_points(self.points[-1].x, self.points[-1].y, ship_x, ship_y) >= self.record_distance:
+            self.points.append(self.Point(ship_x, ship_y, date, not self.points[-1].is_start))
+        if date - self.points[0].created > self.persist_time:
+            self.points = self.points[1:]
+
+    def draw(self, surface, camera_x, camera_y, zoom_level):
+        start = 0 if self.points[0].is_start else 1
+        start_pos = (0, 0)
+        end_pos = (0, 0) # to avoid unexpected crashes
+        for point in self.points[start:]:
+            if point.is_start:
+                start_pos = point.to_screenspace(camera_x, camera_y, zoom_level)
+            else:
+                end_pos = point.to_screenspace(camera_x, camera_y, zoom_level)
+                pg.draw.line(surface, SHIP_PATH_COLOR, start_pos, end_pos, 2)
+
 
 # Setting up pygame
 pg.init()
@@ -404,6 +446,7 @@ sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
 fog_renderer = FogRenderer(FOG_COLOR)
 wind_randomizer = WindRandomizer(20, 0.3)
+ship_path_renderer = ShipPathRenderer(2, timedelta(days=5))
 
 # Showing a loading screen
 loading_text, loading_text_rect = font_big.render("Loading...", "white")
@@ -462,7 +505,8 @@ win = False
 has_won = False # Prevents repeated showing of win screen after pressing "continue"
 wind_heading = wind_randomizer.get_wind_heading()
 is_camera_fixed = False
-sundial_image_width = draw_sundial(ship_latitude, ship_longitude, date).width+20
+sundial_image_width = draw_sundial(ship_latitude, ship_longitude, date).width+40
+
 
 
 # Setting up the main screen
@@ -625,10 +669,15 @@ while run:
     screen.fill((0, 0, 0))
     screen.blit(scaled_surface, (offset_x, offset_y))
 
+    # Drawing the ship path, before the ship itself
+    ship_path_renderer.update(ship_position_x, ship_position_y, date)
+    ship_path_renderer.draw(screen, camera_x, camera_y, zoom_level)
+
     # Drawing the ship's position
     ship_sprite = get_ship_sprite(ship_heading)
     ship_sprite_scaled = pg.transform.smoothscale_by(ship_sprite, zoom_level*0.2)
     render_rect = ship_sprite_scaled.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
+    render_rect.y -= render_rect.height*0.1
     screen.blit(ship_sprite_scaled, render_rect)
 
     # Getting sun information for later use
