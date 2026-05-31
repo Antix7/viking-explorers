@@ -399,7 +399,7 @@ theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_CO
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
 fog_renderer = FogRenderer(FOG_COLOR)
-wind_randomizer = WindRandomizer(10, 0.3)
+wind_randomizer = WindRandomizer(20, 0.3)
 
 # Showing a loading screen
 loading_text, loading_text_rect = font_big.render("Loading...", "white")
@@ -416,8 +416,8 @@ wind_rose_sprite, wind_arrow_sprite = load_wind_rose()
 # Setting up pygame (continued)
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
 sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
-toggle_fog_button = ui.Button(screen, pg.Rect(10, SCREEN_HEIGHT-40, 150, 30), "Toggle fog", theme, toggle_fog)
-buttons = [quit_button, sundial_button]#, toggle_fog_button]
+toggle_fog_button = ui.Button(screen, pg.Rect(160, SCREEN_HEIGHT-50, 130, 30), "Toggle fog", theme, toggle_fog)
+buttons = [quit_button, sundial_button, toggle_fog_button]
 num_timewarp_buttons = 3
 timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
 toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the game incredibly easy. Use this option only if you got completely lost."
@@ -438,7 +438,7 @@ ship_longitude = to_radians(5)
 camera_x = project_spherical(ship_latitude, ship_longitude)[0] - SCREEN_WIDTH/(2*zoom_level)
 camera_y = MAP_HEIGHT - project_spherical(ship_latitude, ship_longitude)[1] - SCREEN_HEIGHT/(2*zoom_level)
 lmb_held_down = False
-ship_default_speed = 8 #[m/s] (very fast ship)
+ship_default_speed = 6 #[m/s] (very fast ship)
 sailing = True
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
@@ -613,6 +613,18 @@ while run:
     render_rect = ship_sprite_scaled.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
     screen.blit(ship_sprite_scaled, render_rect)
 
+    # Getting sun information for later use
+    sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
+    is_night = sun_elevation < SUNDIAL_MIN_ELEVATION
+    sun_elevation = round(to_degrees(sun_elevation), 1)
+    darkening_alpha = 0
+    max_darkening_alpha = 120
+    if 10 <= sun_elevation < 20:
+        fraction = 1 - (sun_elevation-10)/10
+        darkening_alpha = round(max_darkening_alpha * sine_ease(fraction))
+    elif sun_elevation < 10:
+        darkening_alpha = max_darkening_alpha
+
     # Drawing a dark overlay of fog around the ship
     if is_fog_on:
         visibility_radius_v = (horizon_distance/EARTH_RADIUS)*MAP_SCALE*zoom_level
@@ -624,18 +636,16 @@ while run:
 
         ellipse_rect = pg.Rect(0, 0, visibility_radius_h, visibility_radius_v)
         ellipse_rect.center = (ship_position_x_screen, ship_position_y_screen)
-        overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT))
+        overlay = pg.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pg.SRCALPHA)
         overlay.fill(FOG_COLOR)
         pg.draw.ellipse(overlay, "white", ellipse_rect)
         overlay.set_colorkey("white")
+        if is_night:
+            pg.draw.ellipse(overlay, (*FOG_COLOR, darkening_alpha), ellipse_rect)
         screen.blit(overlay, (0, 0))
 
 
     # Drawing the sundial if it's shown
-    sun_elevation, _ = get_sun_position(ship_latitude, ship_longitude, date)
-    is_night = sun_elevation < SUNDIAL_MIN_ELEVATION
-    sun_elevation = round(to_degrees(sun_elevation), 1)
-
     if sundial_shown:
         sundial_image = draw_sundial(ship_latitude, ship_longitude, date)
         sundial_width, sundial_height = sundial_image.size
@@ -649,13 +659,10 @@ while run:
         disclaimer_text_rendered, disclaimer_text_rect = font_small.render(disclaimer_text, "black")
         disclaimer_text_rect.bottomright = (SCREEN_WIDTH-10, SCREEN_HEIGHT-10)
         screen.blit(disclaimer_text_rendered, disclaimer_text_rect)
-        time_text, time_text_rect = font.render("Nighttime" if is_night else "Daytime", "black")
-        time_text_rect.topright = (bg_rect.right - 10, bg_rect.top + 10)
-        screen.blit(time_text, time_text_rect)
         # Darkening the sundial if it's nighttime
         if is_night:
             tmp = pg.Surface((bg_rect.width, bg_rect.height), pg.SRCALPHA)
-            pg.draw.rect(tmp, (*FOG_COLOR, 80), [0, 0, bg_rect.width, bg_rect.height])
+            pg.draw.rect(tmp, (*FOG_COLOR, darkening_alpha), [0, 0, bg_rect.width, bg_rect.height])
             screen.blit(tmp, bg_rect)
 
     # Checking for win condition
@@ -670,13 +677,13 @@ while run:
         button.draw()
     timewarp_controls.draw()
 
-    sun_elevation_text, _ = font_small.render(f"Sun elevation: {sun_elevation}\u00B0", "white")
-    screen.blit(sun_elevation_text, (15, 90))
+    sun_elevation_text = f"Sun elevation: {sun_elevation}\u00B0 " + ("(Nighttime)" if is_night else "(Daytime)")
+    sun_elevation_text_rendered, _ = font_small.render(sun_elevation_text, "white")
+    screen.blit(sun_elevation_text_rendered, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 105))
     wind_text, _ = font_small.render(f"Angle to wind: {round(to_degrees(angle_to_wind), 1)}\u00B0", "white")
     screen.blit(wind_text, (15, 120))
-
 
     wind_rose_rect = wind_rose_sprite.get_rect(bottomleft=(0, SCREEN_HEIGHT))
     screen.blit(wind_rose_sprite, wind_rose_rect)
