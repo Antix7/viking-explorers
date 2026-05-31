@@ -373,6 +373,16 @@ class WindRandomizer:
     def get_wind_heading(self):
         return self.wind_heading
 
+# Gives the speed of the ship, taking into account the direction of the wind
+def get_sailing_speed(default_speed, ship_heading, wind_heading):
+    ship_heading = ship_heading % (2*pi)
+    wind_heading = wind_heading % (2*pi)
+    angle_diff = abs(ship_heading - wind_heading)
+    x = min(angle_diff, 2*pi - angle_diff) # angle to the wind
+    # This formula approximates the speed vs AoA distribution of a real sailboat
+    modifier = cos(0.3*x**2 + 0.5*x - 1.4) + 0.8
+    return default_speed * modifier, x
+
 
 # Setting up pygame
 pg.init()
@@ -428,8 +438,7 @@ ship_longitude = to_radians(5)
 camera_x = project_spherical(ship_latitude, ship_longitude)[0] - SCREEN_WIDTH/(2*zoom_level)
 camera_y = MAP_HEIGHT - project_spherical(ship_latitude, ship_longitude)[1] - SCREEN_HEIGHT/(2*zoom_level)
 lmb_held_down = False
-ship_velocity = 8 #[m/s] (very fast ship)
-ship_angular_velocity = ship_velocity/(EARTH_RADIUS*1000) #[rad/s]
+ship_default_speed = 8 #[m/s] (very fast ship)
 sailing = True
 ship_turning_velocity = 2 #[rad/s]
 ship_heading = 0
@@ -486,7 +495,7 @@ while run:
     delta_time = clock.tick(FPS) / 1000
     date += timedelta(seconds=delta_time*timewarp)
     timewarp = timewarp_multiplier**(timewarp_factor+1) # Lowest timewarp is faster than real-time
-    wind_randomizer.tick(delta_time) # Keeps the wind changing at real speed
+    wind_randomizer.tick(delta_time * 2**timewarp_factor) # Wind changes slower than timewarp for playability
     wind_heading = wind_randomizer.get_wind_heading()
     mouse_pos = pg.mouse.get_pos()
 
@@ -550,6 +559,9 @@ while run:
         lmb_held_down = False
 
     # Ship movement
+    ship_speed, angle_to_wind = get_sailing_speed(ship_default_speed, ship_heading, wind_heading)
+    ship_angular_velocity =  ship_speed/ (EARTH_RADIUS * 1000)  # [rad/s]
+
     pressed_keys = pg.key.get_pressed()
     if pressed_keys[pg.K_a]:
         ship_heading -= ship_turning_velocity * delta_time
@@ -596,7 +608,7 @@ while run:
     ship_position_y = MAP_HEIGHT - ship_position_y
     ship_position_x_screen = (ship_position_x - camera_x) * zoom_level
     ship_position_y_screen = (ship_position_y - camera_y) * zoom_level
-    ship_sprite = get_ship_sprite(apparent_ship_heading)
+    ship_sprite = get_ship_sprite(ship_heading)
     ship_sprite_scaled = pg.transform.smoothscale_by(ship_sprite, zoom_level*0.2)
     render_rect = ship_sprite_scaled.get_rect(center=(ship_position_x_screen, ship_position_y_screen))
     screen.blit(ship_sprite_scaled, render_rect)
@@ -662,6 +674,9 @@ while run:
     screen.blit(sun_elevation_text, (15, 90))
     anchor_text, _ = font_small.render("Anchor: "+("up" if sailing else "down"), "white")
     screen.blit(anchor_text, (15, 105))
+    wind_text, _ = font_small.render(f"Angle to wind: {round(to_degrees(angle_to_wind), 1)}\u00B0", "white")
+    screen.blit(wind_text, (15, 120))
+
 
     wind_rose_rect = wind_rose_sprite.get_rect(bottomleft=(0, SCREEN_HEIGHT))
     screen.blit(wind_rose_sprite, wind_rose_rect)
