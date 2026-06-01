@@ -37,7 +37,7 @@ BUTTON_BASE_COLOR = pg.Color("#bbbbbb")
 BUTTON_HOVER_COLOR = pg.Color("#777777")
 POPUP_BG_COLOR = pg.Color("#dddddd")
 SUNDIAL_BG_COLOR = pg.Color("#fffcf7")
-SHIP_PATH_COLOR = pg.Color("#AD1B28")
+SHIP_PATH_COLOR = pg.Color("#db182a")
 
 
 def distance_between_points(x1, y1, x2, y2):
@@ -446,6 +446,8 @@ def toggle_camera():
     global is_camera_fixed
     is_camera_fixed = not is_camera_fixed
     toggle_camera_button.set_text("Camera: " + ("fixed" if is_camera_fixed else "free"))
+def show_help_popup():
+    help_popup.shown = True
 
 # Helper functions for loading files
 def load_map():
@@ -470,8 +472,8 @@ def load_wind_rose():
     arrow_img = pg.image.load(f"data/wind_arrow.png").convert_alpha()
     arrow_scaled = pg.transform.smoothscale(arrow_img, (60, 60))
     return wind_rose_scaled, arrow_scaled
-def load_main_screen_text():
-    with open("data/main_screen_text.txt", encoding="utf-8") as file:
+def load_text(filename):
+    with open(filename, encoding="utf-8") as file:
         return file.read().strip('\n')
 
 
@@ -487,7 +489,7 @@ clock = pg.time.Clock()
 font_small = ft.Font("data/Inter-Regular.ttf", 12)
 font = ft.Font("data/Inter-Regular.ttf", 20)
 font_big = ft.Font("data/Inter-Regular.ttf", 40)
-theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2)
+theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2, 10)
 
 sundial_height = SCREEN_HEIGHT*0.9
 sundial_renderer = SundialRenderer(sundial_height)
@@ -513,10 +515,11 @@ wind_rose_sprite, wind_arrow_sprite = load_wind_rose()
 
 # Setting up pygame (continued)
 quit_button = ui.Button(screen, pg.Rect(10, 10, 100, 30), "Exit", theme, show_exit_popup)
-sundial_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Sundial", theme, show_sundial)
+help_button = ui.Button(screen, pg.Rect(120, 10, 100, 30), "Help", theme, show_help_popup)
+sundial_button = ui.Button(screen, pg.Rect(230, 10, 100, 30), "Sundial", theme, show_sundial)
 toggle_fog_button = ui.Button(screen, pg.Rect(160, SCREEN_HEIGHT-50, 130, 30), "Toggle fog", theme, toggle_fog)
-toggle_camera_button = ui.Button(screen, pg.Rect(230, 10, 170, 30), "Camera: fixed", theme, toggle_camera)
-buttons = [quit_button, sundial_button, toggle_fog_button, toggle_camera_button]
+toggle_camera_button = ui.Button(screen, pg.Rect(340, 10, 160, 30), "Camera: fixed", theme, toggle_camera)
+buttons = [quit_button, help_button, sundial_button, toggle_fog_button, toggle_camera_button]
 num_timewarp_buttons = 3
 timewarp_controls = ui.TimewarpControls(screen, 10, 50, 80, 30, 10, theme, num_timewarp_buttons)
 toggle_fog_text = "Are you sure you want to disable fog? Doing so will make the game incredibly easy. Use this option only if you got completely lost."
@@ -524,7 +527,9 @@ toggle_fog_popup = ui.Popup(screen, toggle_fog_text, 500, theme, "Cancel", lambd
 win_text = "Congratulations! You have set foot on new shores, and your great expedition shall be written into the history books. You can continue playing or exit the game."
 win_popup = ui.Popup(screen, win_text, 500, theme, "Exit", quit_game, "Continue", lambda:None)
 exit_popup = ui.Popup(screen, "Are you sure you want to exit the game?", 500, theme, "Cancel", lambda:None, "Exit", quit_game)
-popups = [toggle_fog_popup, win_popup, exit_popup, location_tracker.popup]
+help_text = load_text("data/help_text.txt")
+help_popup = ui.Popup(screen, help_text, SCREEN_WIDTH*0.6, theme, "", lambda:None,"Got it!", lambda:None, one_button=True)
+popups = [toggle_fog_popup, win_popup, exit_popup, help_popup, location_tracker.popup]
 
 
 # Game state definitions
@@ -560,7 +565,7 @@ has_won = False # Prevents repeated showing of win screen after pressing "contin
 
 
 # Setting up the main screen
-main_screen_text = load_main_screen_text()
+main_screen_text = load_text("data/main_screen_text.txt")
 ms_text_rendered = ui.render_paragraphs(main_screen_text, font, "white", SCREEN_WIDTH * 0.8, 2, 10)
 ms_text_rect = ms_text_rendered.get_rect(center=(SCREEN_WIDTH / 2, SCREEN_HEIGHT * 0.45))
 if ms_text_rect.top < 0: # Support for smaller screens

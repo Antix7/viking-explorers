@@ -7,7 +7,7 @@ import pygame as pg
 
 # Theme class that stores color, font and screen size information
 class Theme:
-    def __init__(self, screen_width, screen_height, btn_base, btn_hover, btn_text, popup_bg, font, line_spacing):
+    def __init__(self, screen_width, screen_height, btn_base, btn_hover, btn_text, popup_bg, font, line_spacing, par_spacing):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.btn_base = btn_base
@@ -16,6 +16,7 @@ class Theme:
         self.popup_bg = popup_bg
         self.font = font
         self.line_spacing = line_spacing
+        self.par_spacing = par_spacing
 
 # Implementation of a Button class, since pygame doesn't have one
 class Button:
@@ -115,8 +116,8 @@ class Popup:
         self.shown = False
 
     def set_text(self, new_text):
-        self.rendered_text = render_wrapped_text(
-            new_text, self.theme.font, self.theme.btn_text, self.width, self.theme.line_spacing)
+        self.rendered_text = render_paragraphs(new_text, self.theme.font,
+                self.theme.btn_text, self.width, self.theme.line_spacing, self.theme.par_spacing)
         text_rect = self.rendered_text.get_rect()
         self.rect = pg.Rect(0, 0, self.width + 40, text_rect.height + 90)
         self.rect.center = (self.theme.screen_width // 2, self.theme.screen_height // 2)
