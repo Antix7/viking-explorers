@@ -28,8 +28,8 @@ class Button:
         self.hover_color = theme.btn_hover
         self.current_color = self.base_color
         self.callback = callback
-        self.text_surf, self.text_rect = theme.font.render(text, theme.btn_text)
-        self.text_rect.center = self.rect.center
+        self.text_surf, self.text_rect = pg.Surface((0, 0)), pg.Rect(0, 0, 0, 0)
+        self.set_text(text)
 
     def set_rect(self, new_rect):
         self.rect = new_rect
@@ -38,6 +38,10 @@ class Button:
     def set_text(self, new_text):
         self.text_surf, self.text_rect = self.theme.font.render(new_text, self.theme.btn_text)
         self.text_rect.center = self.rect.center
+        if has_hanging_letters(new_text):
+            self.text_rect.y += self.text_rect.height * 0.15
+        if 'i' in new_text:
+            self.text_rect.y -= self.text_rect.height * 0.05
 
     def update(self, mouse_pos):
         if self.rect.collidepoint(mouse_pos):
@@ -146,6 +150,15 @@ class Popup:
             for button in self.buttons:
                 button.draw()
 
+
+# Checks if test contains hanging letters, used for alignment
+def has_hanging_letters(text):
+    hanging_letters = list("Qqypgj")
+    result = False
+    for letter in hanging_letters:
+        if letter in text:
+            result = True
+    return result
 
 # Renders a block of text wrapped to a specific width
 def render_wrapped_text(text, font, color, max_width, line_spacing):
