@@ -1,6 +1,7 @@
 from math import *
 from datetime import datetime, timedelta
 from random import random
+import os
 import numpy as np
 import matplotlib
 matplotlib.use("Agg") # Force headless mode for matplotlib, for sundial rendering performance
@@ -22,6 +23,7 @@ def hex_to_rgb(hex_color):
 
 
 # Constants
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 EARTH_RADIUS = 6371 #[km]
 MAP_SCALE = 60*(180/pi) #[px/rad]
 MAP_LAT_START = -pi/2
@@ -39,6 +41,10 @@ POPUP_BG_COLOR = pg.Color("#dddddd")
 SUNDIAL_BG_COLOR = pg.Color("#fffcf7")
 SHIP_PATH_COLOR = pg.Color("#db182a")
 
+
+# Gives the full path to a given file
+def full_path(path):
+    return os.path.join(BASE_DIR, path)
 
 def distance_between_points(x1, y1, x2, y2):
     return sqrt((x1 - x2)**2 + (y1 - y2)**2)
@@ -384,7 +390,7 @@ class LocationTracker:
         self.popup = ui.Popup(screen, ".", 500, theme, "", lambda:None,
                               "Continue", lambda:None, one_button=True)
         self.locations = []
-        with open("data/locations.csv", "r", encoding="utf-8") as file:
+        with open(full_path("data/locations.csv"), "r", encoding="utf-8") as file:
             for row in file.readlines()[1:]: # skip header
                 split_row = row.split(',')
                 location = {
@@ -452,7 +458,7 @@ def show_help_popup():
 # Helper functions for loading files
 def load_map():
     # The world map is compressed into a numpy array, where 0 represents sea and 1 land.
-    land_sea_mask = np.load("data/land_sea_mask.npz")["mask"]
+    land_sea_mask = np.load(full_path("data/land_sea_mask.npz"))["mask"]
     MAP_HEIGHT, MAP_WIDTH = land_sea_mask.shape
     rgb_map = np.zeros((MAP_HEIGHT, MAP_WIDTH, 3), dtype=np.uint8)
     rgb_map[land_sea_mask == 0] = SEA_COLOR
@@ -463,32 +469,32 @@ def load_map():
 def load_ship_sprites():
     sprites = []
     for i in range(17, 1, -1):
-        image = pg.image.load(f"data/ship/ship{i}.png").convert_alpha()
+        image = pg.image.load(full_path(f"data/ship/ship{i}.png")).convert_alpha()
         sprites.append(image)
     return sprites
 def load_wind_rose():
-    wind_rose_img = pg.image.load(f"data/wind_rose.png").convert_alpha()
+    wind_rose_img = pg.image.load(full_path(f"data/wind_rose.png")).convert_alpha()
     wind_rose_scaled = pg.transform.smoothscale(wind_rose_img, (150, 150))
-    arrow_img = pg.image.load(f"data/wind_arrow.png").convert_alpha()
+    arrow_img = pg.image.load(full_path(f"data/wind_arrow.png")).convert_alpha()
     arrow_scaled = pg.transform.smoothscale(arrow_img, (60, 60))
     return wind_rose_scaled, arrow_scaled
 def load_text(filename):
-    with open(filename, encoding="utf-8") as file:
+    with open(full_path(filename), encoding="utf-8") as file:
         return file.read().strip('\n')
 
 
 # Setting up pygame
 pg.init()
-pg.display.set_icon(pg.image.load("data/icon.ico"))
+pg.display.set_icon(pg.image.load(full_path("data/icon.ico")))
 pg.display.set_caption("Viking Explorers")
 screen = pg.display.set_mode((0, 0), pg.FULLSCREEN)
 SCREEN_WIDTH = screen.get_width()
 SCREEN_HEIGHT = screen.get_height()
 
 clock = pg.time.Clock()
-font_small = ft.Font("data/Inter-Regular.ttf", 12)
-font = ft.Font("data/Inter-Regular.ttf", 20)
-font_big = ft.Font("data/Inter-Regular.ttf", 40)
+font_small = ft.Font(full_path("data/Inter-Regular.ttf"), 12)
+font = ft.Font(full_path("data/Inter-Regular.ttf"), 20)
+font_big = ft.Font(full_path("data/Inter-Regular.ttf"), 40)
 theme = ui.Theme(SCREEN_WIDTH, SCREEN_HEIGHT, BUTTON_BASE_COLOR, BUTTON_HOVER_COLOR, "black", POPUP_BG_COLOR, font, 2, 10)
 
 sundial_height = SCREEN_HEIGHT*0.9
